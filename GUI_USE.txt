@@ -1,0 +1,10 @@
+進入環境:
+	cd C:\Users\Gura\Desktop\pyVHR-1.0.2\pyVHR-1.0.2\pyVHR-env\Scripts
+	activate
+
+使用py檔:
+	cd ../../pyVHR/realtime
+	python GUI.py
+
+操作GUI:
+	fps fixed填入30後按Apply再按Start即可
