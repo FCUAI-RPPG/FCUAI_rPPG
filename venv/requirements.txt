@@ -68,7 +68,7 @@ jupyter-console==6.4.4
 jupyter-core==4.11.1
 jupyterlab-pygments==0.2.2
 jupyterlab-widgets==1.1.1
-kaleido==0.2.1
+kaleido==0.1.0.post1
 keras==2.9.0
 Keras-Preprocessing==1.1.2
 kiwisolver==1.4.4
