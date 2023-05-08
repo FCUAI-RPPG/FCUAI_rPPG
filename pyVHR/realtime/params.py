@@ -1,3 +1,5 @@
+import sys
+sys.path.append("D://rPPG//FCUAI_rPPG_workplace//pyVHR")
 from pyVHR.extraction.utils import MagicLandmarks
 from pyVHR.BVP.methods import *
 from pyVHR.BVP.filters import *
@@ -7,13 +9,13 @@ class Params:
     # DEFAULT PARAMETERS
     startTime = None
     endTime = None
-    methodName = "CHROM"
+    methodName = ""
 
 
-    videoFileName = ''
+    videoFileName = ""
     fps_fixed = 30
     tot_sec = 0
-    winSize = 6
+    winSize = 6             #winsize基本上代表秒數
     stride = 1
     cuda = True
     skin_extractor = 'convexhull'  # or faceparsing
@@ -42,21 +44,21 @@ class Params:
     # Pre filtering
     # dictionary of {filter_func, params}
     pre_filter = [{'filter_func': BPfilter, 'params': {
-        'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
+        'minHz': 0.65, 'maxHz': 4.0, 'fps': 'adaptive', 'order': 6}}]
 
     # BVP method
     # dictionary of {method_func, device_type, params}
-    method = {'method_func': cupy_CHROM,
-              'device_type': 'cuda', 'params': {}}
+    method = {'method_func': cpu_SSR,                    #cpu_SSR、cupy_CHROM
+              'device_type': 'cpu', 'params': {}}          #'device_type': 'cuda'
 
     # Post filtering
     # dictionary of {filter_func, params}
     post_filter = [{'filter_func': BPfilter, 'params': {
-        'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
+        'minHz': 0.65, 'maxHz': 4.0, 'fps': 'adaptive', 'order': 6}}]
 
     # BPM params
-    minHz = 0.7
-    maxHz = 3.0
+    minHz = 0.75
+    maxHz = 4.0
     # WELCH: CPU, GPU
     # PSD_CLUSTERING: CPU, GPU
     # USE psd_clustering only with patches!

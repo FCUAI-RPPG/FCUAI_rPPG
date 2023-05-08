@@ -141,13 +141,13 @@ def kernel_rgb_filter_th(sig, RGB_LOW_TH, RGB_HIGH_TH):
     This method performs the Color Threshold filter for RGB signal only.
     Please refer to the method pyVHR.BVP.filters.rgb_filter_th.
     """
-    goodidx = np.ones((sig.shape[0],), dtype=np.int32)
-    for idx in prange(sig.shape[0]):
+    goodidx = np.ones((sig.shape[0],), dtype=np.int32)      #goodidx是判斷是否完整的patch的binary開關
+    for idx in prange(sig.shape[0]): 
         b_in = 1
-        for f in prange(sig.shape[2]):
+        for f in prange(sig.shape[2]):#///////////////////在這裡沒被抓到或顏色不符合人體的patch，goodidx會被填0
             if ((sig[idx][0][f] <= RGB_LOW_TH and sig[idx][1][f] <= RGB_LOW_TH and sig[idx][2][f] <= RGB_LOW_TH) or
                     (sig[idx][0][f] >= RGB_HIGH_TH and sig[idx][1][f] >= RGB_HIGH_TH and sig[idx][2][f] >= RGB_HIGH_TH)):
-                b_in = 0
+                b_in = 1                    #改1代表每次都拿全部patch
         goodidx[idx] = b_in
     return goodidx
 
@@ -164,6 +164,7 @@ def rgb_filter_th(sig, **kargs):
     """
     goodidx = kernel_rgb_filter_th(
         sig, np.int32(kargs['RGB_LOW_TH']), np.int32(kargs['RGB_HIGH_TH']))
+    # print(np.argwhere(goodidx==1).flatten()) 
     if np.sum(goodidx) == 0:
         return np.zeros((0, sig.shape[1], sig.shape[2]))
-    return np.copy(sig[np.argwhere(goodidx).flatten()])
+    return np.copy(sig[np.argwhere(goodidx).flatten()])         #goodidx填0的值不回傳

@@ -1,22 +1,26 @@
+import sys
+sys.path.append("D://rPPG//FCUAI_rPPG_workplace//pyVHR")
+import warnings
+warnings.filterwarnings('ignore')
 from threading import Thread
 from time import sleep
-# from pyVHR.realtime.params import Params
-from params import Params
-# from pyVHR.realtime.video_capture import VideoCapture
 from video_capture import VideoCapture
+from params import Params
+import tensorflow as tf
 import cv2
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from importlib import import_module, util
 from pyVHR.datasets.dataset import datasetFactory
 from pyVHR.utils.errors import getErrors, printErrors, displayErrors
-from pyVHR.extraction.sig_processing import *
+from extraction.sig_processing import *
 from pyVHR.extraction.sig_extraction_methods import *
 from pyVHR.extraction.skin_extraction_methods import *
-from pyVHR.BVP.BVP import *
-from pyVHR.BPM.BPM import *
-from pyVHR.BVP.methods import *
-from pyVHR.BVP.filters import *
+from BVP.BVP import *
+from BPM.BPM import *
+from BVP.methods import *
+from BVP.filters import *
 import PySimpleGUI as sg
 import numpy as np
 import plotly.graph_objects as go
@@ -54,12 +58,12 @@ def SaveData():
         write.writerows(dataset)
 
 def VHRroutine(sharedData):
+    
 
     ###TEST###
     global bvpSave
     global bpmSave
-    global bpmTime
-
+    global bpmTime 
     bvpSave = []
     bpmSave = []
     bpmTime = []
@@ -70,6 +74,8 @@ def VHRroutine(sharedData):
     currentBPM = 0
     patchNum = 0
     movement = 5
+    global last_bpm
+    global bpm_num
 
     st1 = "The central point of face:"
     st2 = "Movement:"
@@ -93,7 +99,7 @@ def VHRroutine(sharedData):
     # Patches settings #
     elif Params.approach == 'patches':
         # extraction method
-        if Params.type == "mean" and Params.patches == "squares":
+        if Params.type == "mean" and Params.patches == "squares":       #預設走這裡
             sig_ext_met = landmarks_mean
         elif Params.type == "mean" and Params.patches == "rects":
             sig_ext_met = landmarks_mean_custom_rect
@@ -117,7 +123,8 @@ def VHRroutine(sharedData):
         Params.skin_color_high_threshold)
 
     color = np.array([Params.font_color[0],
-                      Params.font_color[1], Params.font_color[2]], dtype=np.uint8)
+                      Params.font_color[1], 
+                      Params.font_color[2]], dtype=np.uint8)
 
     skin_ex = None
     target_device = 'GPU' if Params.cuda else 'CPU'
@@ -138,9 +145,10 @@ def VHRroutine(sharedData):
     tot_frames = int(Params.tot_sec*fps)
 
     sig = []
+    raw_sig = []
     processed_frames_count = 0
     sig_buff_dim = int(fps * Params.winSize)
-    sig_stride = int(fps * Params.stride)
+    sig_stride = int(fps * Params.stride)                   #改window大小的地方
     sig_buff_counter = sig_stride
 
     BPM_obj = None
@@ -149,6 +157,7 @@ def VHRroutine(sharedData):
 
     cap = VideoCapture(Params.videoFileName, sharedData, fps=fps,
                        sleep=Params.fake_delay, resize=Params.resize)
+
 
     send_images_count = 0
     send_images_stride = 3
@@ -207,10 +216,10 @@ def VHRroutine(sharedData):
             ### face landmarks ###
 
             results = face_mesh.process(image)
-            if results.multi_face_landmarks:
+            if results.multi_face_landmarks:#/////////////////////////////////////////////////////改多人有可能的區域
                 face_landmarks = results.multi_face_landmarks[0]
                 landmarks = [l for l in face_landmarks.landmark]
-                for idx in range(len(landmarks)):
+                for idx in range(len(landmarks)):       #/////////////idx為mediapipe的468個點
                     landmark = landmarks[idx]
                     if not ((landmark.HasField('visibility') and landmark.visibility < VISIBILITY_THRESHOLD)
                             or (landmark.HasField('presence') and landmark.presence < PRESENCE_THRESHOLD)):
@@ -232,25 +241,31 @@ def VHRroutine(sharedData):
                             if(max_y < coords[1]):
                                 max_y = coords[1]
 
-                            ###TEST###
+                            ###TEST###1
                 ### skin extraction ###
                 cropped_skin_im, full_skin_im = skin_ex.extract_skin(
                     image, ldmks)
+                # print(len(cropped_skin_im))
             else:
                 cropped_skin_im = np.zeros_like(image)
                 full_skin_im = np.zeros_like(image)
             ### SIG ###
-            if Params.approach == 'patches':
-                magic_ldmks = np.array(
-                    ldmks[Params.landmarks_list], dtype=np.float32)
-                temp = sig_ext_met(magic_ldmks, full_skin_im, ldmks_regions,
+            if Params.approach == 'patches':#選patch跑這裡/////////////////////////////////////////////////////////
+                if Params.method['method_func'] ==  cpu_SSR:               #測試2SR,做padding把臉以外的值填充0
+                    temp = np.pad(cropped_skin_im,((0,full_skin_im.shape[0]-cropped_skin_im.shape[0]),(full_skin_im.shape[1]-cropped_skin_im.shape[1],0),(0,0)),'constant',constant_values=(0,0))
+                    magic_ldmks = np.array(
+                        ldmks[Params.landmarks_list], dtype=np.float32)
+                else:
+                    magic_ldmks = np.array(
+                        ldmks[Params.landmarks_list], dtype=np.float32)
+                    temp = sig_ext_met(magic_ldmks, full_skin_im, ldmks_regions,
                                    np.int32(SignalProcessingParams.RGB_LOW_TH), np.int32(SignalProcessingParams.RGB_HIGH_TH))
-                temp = temp[:, 2:]  # keep only rgb mean
+                    temp = temp[:, 2:]  # keep only rgb mean
             elif Params.approach == 'holistic':
                 temp = sig_ext_met(cropped_skin_im, np.int32(
                     SignalProcessingParams.RGB_LOW_TH), np.int32(SignalProcessingParams.RGB_HIGH_TH))
-            sig.append(temp)
-
+            sig.append(temp)                                #append到fps*stride個frame，開始計算
+            
             # visualize original, patches and skin
             if send_images_count == send_images_stride:
                 send_images_count = 0
@@ -291,7 +306,7 @@ def VHRroutine(sharedData):
                     sharedData.q_skin_image.put(full_skin_im)
                 if Params.approach == 'patches' and Params.visualize_landmarks == True:
                     annotated_image = full_skin_im.copy()
-                    for idx in Params.landmarks_list:
+                    for idx in Params.landmarks_list:       #/////////////idx為mediapipe的468個點中的100個點
                         cv2.circle(
                             annotated_image, (int(ldmks[idx, 1]), int(ldmks[idx, 0])), radius=0, color=Params.font_color, thickness=-1)
                         if Params.visualize_landmarks_number == True:
@@ -314,39 +329,46 @@ def VHRroutine(sharedData):
                 send_images_count += 1
 
             if processed_frames_count > sig_buff_dim:
-                sig = sig[1:]
+                sig = sig[1:]                   #取第2個到最後，不太懂?
                 if sig_buff_counter == 0:
                     sig_buff_counter = sig_stride
-                    copy_sig = np.array(sig, dtype=np.float32)
-                    copy_sig = np.swapaxes(copy_sig, 0, 1)
-                    copy_sig = np.swapaxes(copy_sig, 1, 2)
+                    if Params.method['method_func'] != cpu_SSR:
+                        # sig_buff_counter = sig_stride
+                        copy_sig = np.array(sig, dtype=np.float32)
+                        copy_sig = np.swapaxes(copy_sig, 0, 1)
+                        copy_sig = np.swapaxes(copy_sig, 1, 2)
 
-                    ### Pre_filtering ###
-                    if Params.approach == 'patches':
-                        copy_sig = rgb_filter_th(copy_sig, **{'RGB_LOW_TH':  np.int32(Params.color_low_threshold),
-                                                              'RGB_HIGH_TH': np.int32(Params.color_high_threshold)})
-                    for filt in Params.pre_filter:
-                        if filt != {}:
-                            if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
-                                filt['params']['fps'] = float(fps)
-                            if filt['params'] == {}:
-                                copy_sig = filt['filter_func'](
-                                    copy_sig)
-                            else:
-                                copy_sig = filt['filter_func'](
-                                    copy_sig, **filt['params'])
-
-                    ### BVP ###
+                        ### Pre_filtering ###////////////////////////////////////patch在這裡被去除的////////////////////
+                        if Params.approach == 'patches':
+                            copy_sig = rgb_filter_th(copy_sig, **{'RGB_LOW_TH':  np.int32(Params.color_low_threshold),
+                                                                  'RGB_HIGH_TH': np.int32(Params.color_high_threshold)})
+                        for filt in Params.pre_filter:
+                            if filt != {}:
+                                if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
+                                    filt['params']['fps'] = float(fps)
+                                if filt['params'] == {}:
+                                    copy_sig = filt['filter_func'](
+                                        copy_sig)
+                                else:
+                                    copy_sig = filt['filter_func'](
+                                        copy_sig, **filt['params'])
+                    
+                    else:
+                        copy_sig = np.array(sig, dtype=np.float32)
                     bvp = np.zeros((0, 1), dtype=np.float32)
+                    ### BVP ###
+                    # if Params.method['method_func'] == cpu_SSR:
+                    #         bvp = signals_to_bvps_cpu(
+                    #             copy_raw_sig, Params.method['method_func'], Params.method['params'])
                     if Params.method['device_type'] == 'cpu':
                         bvp = signals_to_bvps_cpu(
-                            copy_sig, Params.method['method_func'], Params.method['params'])
+                            copy_sig, Params.method['method_func'], Params.method['params'])         
                     elif Params.method['device_type'] == 'torch':
                         bvp = signals_to_bvps_torch(
                             copy_sig, Params.method['method_func'], Params.method['params'])
-                    elif Params.method['device_type'] == 'cuda':
+                    elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
                         bvp = signals_to_bvps_cuda(
-                            copy_sig, Params.method['method_func'], Params.method['params'])
+                            copy_sig, Params.method['method_func'], Params.method['params'])       
 
                     ### Post_filtering ###
                     for filt in Params.pre_filter:
@@ -368,15 +390,25 @@ def VHRroutine(sharedData):
 
                     ### BPM ###
                     if Params.cuda:
+                        #///////////////////////////////////////////////////////////////////////用這個提取BPM
                         bvp_device = cupy.asarray(bvp)
                         if BPM_obj == None:
+                            #///////////////////////////////////////////////////////////////////////先跑1次
+                            last_bpm = 0
+                            bpm_num = 0
                             BPM_obj = BPMcuda(bvp_device, fps,
                                               minHz=Params.minHz, maxHz=Params.maxHz)
                         else:
+                            #///////////////////////////////////////////////////////////////////////第2次以後都是這裡
                             BPM_obj.data = bvp_device
                         if Params.BPM_extraction_type == "welch":
+                            #///////////////////////////////////////////////////////////////////////會跑這條
                             bpm = BPM_obj.BVP_to_BPM()
                             bpm = cupy.asnumpy(bpm)
+                            # bpm , bpm2 = BPM_obj.BVP_to_BPM_2()
+                            # bpm = cupy.asnumpy(bpm)
+                            # bpm2 = cupy.asnumpy(bpm2)
+                            # /////////////////////////////////////測試抓第2大訊號////////////////////////
                         elif Params.BPM_extraction_type == "psd_clustering":
                             bpm = BPM_obj.BVP_to_BPM_PSD_clustering()
                     else:
@@ -393,7 +425,19 @@ def VHRroutine(sharedData):
                         if len(bpm.shape) > 0 and bpm.shape[0] == 0:
                             bpm = np.float32(0.0)
                         else:
-                            bpm = np.float32(np.median(bpm))
+                            # //////////////////////////////////////////////////////////////////測試取第1和第2諧波後寫檔////////////////////////////
+                            bpm_data = pd.Series(bpm)
+                            # bpm_data_sec = pd.Series(bpm2)
+                            bpm = np.float32(np.median(bpm_data))
+                            # bpm_median = pd.Series(bpm)
+                            # if os.path.exists('C:\\Users\\user\\Desktop\\bpm_data.csv'):    
+                            #     old_bpm_data = pd.read_csv('C:\\Users\\user\\Desktop\\bpm_data.csv')
+                            #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True)    #bpm_data_sec,bpm_median
+                            #     pd.concat([old_bpm_data,bpm_data],axis =1).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False)
+                            # else:
+                            #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False) #bpm_data_sec,bpm_median
+                            # #//////////////////////////////////////////////////////////////bpm取所有patch的中位數
+                    
                     sharedData.q_bpm.put(bpm)
 
                     ###TEST###
@@ -403,7 +447,6 @@ def VHRroutine(sharedData):
                     temp = sharedData.q_saveTimes.get()
                     bpmTime.append(temp)
                     ###TEST###
-
                 else:
                     sig_buff_counter -= 1
 

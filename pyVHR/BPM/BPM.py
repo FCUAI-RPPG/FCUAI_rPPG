@@ -1,14 +1,16 @@
 import cupy
 import numpy as np
+from numba import jit
 from scipy.signal import welch
 from scipy.signal import find_peaks, stft
 from plotly.subplots import make_subplots
 from plotly.colors import n_colors
 import plotly.graph_objects as go
 from scipy.interpolate import interp1d
-from pyVHR.plot.visualize import VisualizeParams
-from pyVHR.BPM.utils import *
+from plot.visualize import VisualizeParams
+from BPM.utils import *
 from scipy.stats import median_absolute_deviation as mad
+from scipy.signal import find_peaks
 
 """
 This module contains all the class and the methods for transforming 
@@ -131,7 +133,7 @@ class BPMcuda:
             [self.fps, self.nFFT, self.minHz, self.maxHz])
         self.gmodel = Model(gaussian, independent_vars=['x', 'mu', 'a'])
 
-    def BVP_to_BPM(self):
+    def BVP_to_BPM(self):                                   #///////////////////////////////跑這條
         """
         Return the BPM signal as a float32 cupy.ndarray with shape [num_estimators, ]. Remember that
         the value returned is on GPU, use cupy.asnumpy() to transform it to a Numpy ndarray.
@@ -146,8 +148,40 @@ class BPMcuda:
         Pfreqs, Power = Welch_cuda(self.data, self.gpuData[0], self.gpuData[2], self.gpuData[3], self.gpuData[1])
         # -- BPM estimate 
         Pmax = cupy.argmax(Power, axis=1)  # power max
+        
         return Pfreqs[Pmax.squeeze()]
 
+# ////////////////////////////////////////////////////////////////////////測試抓第2諧波////////////////////////////////////////////
+
+    def BVP_to_BPM_2(self):                                   
+        """
+        Return the BPM signal as a float32 cupy.ndarray with shape [num_estimators, ]. Remember that
+        the value returned is on GPU, use cupy.asnumpy() to transform it to a Numpy ndarray.
+
+        This method use the Welch's method to estimate the spectral density of the BVP signal,
+        then it chooses as BPM the maximum Amplitude frequency.
+        """
+        # -- interpolation for less than 256 samples
+        _, n = self.data.shape
+        if self.data.shape[0] == 0:
+            return cupy.float32(0.0)
+        Pfreqs, Power = Welch_cuda(self.data, self.gpuData[0], self.gpuData[2], self.gpuData[3], self.gpuData[1])
+        # -- BPM estimate 
+        Pmax = cupy.argmax(Power, axis=1)  # power max
+        # ///////////////////////////////////////////////////////////////////此為測試抓第2高峰值////////////////////////////
+        
+        second_place =[0]*100
+        second_place = np.asarray(second_place)
+        for i in range (len(Power)):
+            peaks, _ = find_peaks(cupy.asnumpy(Power[i]), height=0)
+            for j in range(len(peaks)-1):
+                if j>0 :
+                    if Power[i][peaks[j]]>Power[i][peaks[j]-1] and Power[i][peaks[j]]>Power[i][peaks[j]+1] and j != Pmax[i]:
+                        if Power[i][peaks[j]] > Power[i][second_place[i]]:
+                            second_place[i] = peaks[j]
+
+        return Pfreqs[Pmax.squeeze()],Pfreqs[second_place]
+# //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     
     def BVP_to_BPM_PSD_clustering(self, out_fact=1):
         """

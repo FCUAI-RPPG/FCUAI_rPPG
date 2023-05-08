@@ -68,10 +68,11 @@ def Welch_cuda(bvps, fps, minHz=0.65, maxHz=4.0, nfft=2048):
     # -- periodogram by Welch
     F, P = cusignal.welch(bvps, nperseg=seglength,
                             noverlap=overlap, fs=fps, nfft=nfft)
-    # -- freq subband (0.65 Hz - 4.0 Hz)
+    # -- freq subband (0.65 Hz - 4.0 Hz)    39~240  BPM
     band = cupy.argwhere((F > minHz) & (F < maxHz)).flatten()
     Pfreqs = 60*F[band]
     Power = P[:, band]
+    
     return Pfreqs, Power
 
 def circle_clustering(W, eps=0.01, theta0=None, normalize=False):

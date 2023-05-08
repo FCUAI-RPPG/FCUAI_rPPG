@@ -1,5 +1,5 @@
 import cv2
-import threading
+from threading import Thread
 import time
 from pyVHR.extraction.utils import *
 from datetime import datetime
@@ -9,9 +9,8 @@ from params import Params
 class VideoCapture:
     # bufferless VideoCapture
     def __init__(self, name, sharedData, fps=None, sleep=False, resize=True):
-        self.cap = cv2.VideoCapture(name, cv2.CAP_DSHOW)
+        self.cap = cv2.VideoCapture(name)               # ,cv2.CAP_DSHOW  加進去會強制使用相機
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
-        # self.cap = cv2.VideoCapture(0)
         self.sleep = sleep
         self.resize = resize
         self.fps = None
@@ -19,13 +18,12 @@ class VideoCapture:
             self.cap.set(cv2.CAP_PROP_FPS, fps)
             self.fps = fps
         self.sd = sharedData
-        self.t = threading.Thread(target=self._reader)
+        self.t = Thread(target=self._reader)
         self.t.daemon = False  # when process ends all deamon will be killed
         self.t.start()
 
     # read frames as soon as they are available
     def _reader(self):
-        count = 0
         while True:
             if not self.sd.q_stop_cap.empty():  # GUI stopped
                 self.sd.q_stop_cap.get()

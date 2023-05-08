@@ -6,6 +6,9 @@ import PySimpleGUI as sg
 import threading
 import ast
 import pickle
+import plotly.io as io
+io.kaleido.scope.mathjax = None
+
 
 
 def GUI_MENU():
@@ -15,7 +18,8 @@ def GUI_MENU():
              sg.FileBrowse(target=("-VideoFileName-"))],
             [sg.Text("Use Method:"),
              sg.Radio("CHROM", "RADIO9", default=True, key="-useCHROM-"),
-             sg.Radio("LGI", "RADIO9", default=False, key="-useLGI-")],
+             sg.Radio("LGI", "RADIO9", default=False, key="-useLGI-"),
+             sg.Radio("2SR", "RADIO9", default=True, key="-use2SR-")],
             [sg.Text("Use CUDA:"),
              sg.Radio("True", "RADIO1", default=True, key="-cudaTrue-"),
              sg.Radio("False", "RADIO1", default=False, key="-cudaFalse-")],
@@ -137,9 +141,11 @@ def GUI_MENU():
         wr = sg.Window('pyVHR - RUN', run_layout,
                        finalize=True, location=(0, 0))
         # blank plots for compiling kernels
+        
         imgbytes = cv2.imencode('.png', cv2.cvtColor(
             np.zeros((480, 640, 3), dtype=np.uint8), cv2.COLOR_BGR2RGB))[1].tobytes()
         wr['-VIDEO-'].update(data=imgbytes)
+        
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=np.arange(0, 10, 1), y=np.zeros(9),
                                  mode='lines+markers',
@@ -248,6 +254,10 @@ def GUI_MENU():
             elif((values['-useLGI-'])):
                 Params.methodName = "LGI"
                 Params.method = {'method_func': cpu_LGI,
+                                 'device_type': 'cpu', 'params': {}}
+            elif((values['-use2SR-'])):
+                Params.methodName = "2SR"
+                Params.method = {'method_func': cpu_SSR,
                                  'device_type': 'cpu', 'params': {}}
             # print(Params.methodName)
             ###TEST###
@@ -384,8 +394,8 @@ if __name__ == '__main__':
     Params.pre_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
 
-    Params.method = {'method_func': cupy_CHROM,
-                     'device_type': 'cuda', 'params': {}}
+    Params.method = {'method_func': cpu_SSR,             #cpu_SSR、cupy_CHROM
+                     'device_type': 'cpu', 'params': {}}   #'device_type': 'cuda'
 
     Params.post_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]

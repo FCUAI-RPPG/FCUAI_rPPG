@@ -1,0 +1,36 @@
+[33mcommit 369967d901ceace1af1992abcbf1ebd82ceaac1e[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m
+Merge: 63ad2bd c9cb18d
+Author: HuangKaiChun <lspss96216@gmail.com>
+Date:   Fri Feb 3 13:07:33 2023 +0800
+
+    change notice
+
+[33mcommit 63ad2bd4da0f7a9ee9d62248374d6d9aa4d3064a[m
+Author: HuangKaiChun <lspss96216@gmail.com>
+Date:   Fri Feb 3 12:56:06 2023 +0800
+
+    change kaleido==0.1.0.post1
+
+[33mcommit c9cb18d530e0b6ef0fa1d7bf2eb311c3134aa3f2[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: HuangKaiChun <123925957+HuangKaiChun@users.noreply.github.com>
+Date:   Thu Feb 2 18:20:56 2023 +0800
+
+    Update requirements.txt
+
+[33mcommit 9a08a9ef2c06f3207cf8ddcec7a05eee10237cdc[m
+Author: HuangKaiChun <123925957+HuangKaiChun@users.noreply.github.com>
+Date:   Tue Jan 31 15:22:14 2023 +0800
+
+    Update README.md
+
+[33mcommit 9898f54eab8f1352122542660e8f595b1f5ea520[m
+Author: HuangKaiChun <123925957+HuangKaiChun@users.noreply.github.com>
+Date:   Mon Jan 30 14:46:30 2023 +0800
+
+    Create README.md
+
+[33mcommit 22d770f835a6097045ac2d2300f5484dedacf410[m
+Author: HuangKaiChun <lspss96216@gmail.com>
+Date:   Mon Jan 30 14:33:53 2023 +0800
+
+    add python file

@@ -1,7 +1,7 @@
 import cupy
 import numpy as np
 import torch
-import sys
+
 
 """
 This module contains methods for trasforming an input signal
@@ -24,12 +24,12 @@ def signals_to_bvps_cuda(sig, cupy_method, params={}):
     """
     if sig.shape[0] == 0:
         return np.zeros((0, sig.shape[2]), dtype=sig.dtype)
-    gpu_sig = cupy.asarray(sig)
-    if len(params) > 0:
+    gpu_sig = cupy.asarray(sig)        
+    if len(params) > 0:#/////////////////////////////////////////////cupy_method = CHROM或其他方法
         bvps = cupy_method(gpu_sig, **params)
     else:
-        bvps = cupy_method(gpu_sig)
-    r_bvps = cupy.asnumpy(bvps)
+        bvps = cupy_method(gpu_sig)         #CHROM走這裡
+    r_bvps = cupy.asnumpy(bvps)     
     gpu_sig = None
     bvps = None
     return r_bvps
@@ -82,7 +82,7 @@ def signals_to_bvps_cpu(sig, cpu_method, params={}):
     if sig.shape[0] == 0:
         return np.zeros((0, sig.shape[2]), dtype=sig.dtype)
     cpu_sig = np.array(sig)
-    if len(params) > 0:
+    if len(params) > 0:             #//////////////cupy_method = SSR走cpu
         bvps = cpu_method(cpu_sig, **params)
     else:
         bvps = cpu_method(cpu_sig)

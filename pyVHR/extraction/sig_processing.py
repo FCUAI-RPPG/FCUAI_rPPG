@@ -1,10 +1,10 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from pyVHR.extraction.utils import *
-from pyVHR.extraction.skin_extraction_methods import *
-from pyVHR.extraction.sig_extraction_methods import *
-from pyVHR.utils.cuda_utils import *
+from extraction.utils import *
+from extraction.skin_extraction_methods import *
+from extraction.sig_extraction_methods import *
+from utils.cuda_utils import *
 
 """
 This module defines classes or methods used for Signal extraction and processing.
@@ -154,7 +154,7 @@ class SignalProcessing():
                 ldmks = np.zeros((468, 5), dtype=np.float32)
                 ldmks[:, 0] = -1.0
                 ldmks[:, 1] = -1.0
-                ### face landmarks ###
+                ### face landmarks ###///////////////////////////////////////////////////////////////////////////////////改多人應該是這裡
                 results = face_mesh.process(image)
                 if results.multi_face_landmarks:
                     face_landmarks = results.multi_face_landmarks[0]
@@ -168,7 +168,7 @@ class SignalProcessing():
                             if coords:
                                 ldmks[idx, 0] = coords[1]
                                 ldmks[idx, 1] = coords[0]
-                    ### skin extraction ###
+                    ### skin extraction ###////////////////////////////////////////////////////////////////////////////////////
                     cropped_skin_im, full_skin_im = skin_ex.extract_skin(
                         image, ldmks)
                 else:

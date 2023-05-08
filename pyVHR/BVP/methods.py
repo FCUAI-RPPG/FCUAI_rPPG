@@ -1,11 +1,11 @@
 import cupy
-import math
-import time
 import numpy as np
 import torch
-import os
+import tensorflow as tf
+import time
 from sklearn.decomposition import PCA
-from pyVHR.BVP.utils import jadeR
+from BVP.utils import jadeR
+from numba import jit
 
 
 """
@@ -284,6 +284,7 @@ def cpu_SSR(raw_signal,**kargs):
     Wang, W., Stuijk, S., & De Haan, G. (2015). A novel algorithm for remote photoplethysmography: Spatial subspace rotation. IEEE transactions on biomedical engineering, 63(9), 1974-1984.
     """
     # utils functions #
+    @jit
     def __build_p(τ, k, l, U, Λ):
         """
         builds P
@@ -305,7 +306,10 @@ def cpu_SSR(raw_signal,**kargs):
         # SR'
         SR = np.zeros((3, l), np.float32)  # dim: 3xl
         z = 0
-
+        # print(time.perf_counter())
+        
+        #寫成含式做平行化看看
+        
         for t in range(τ, k, 1):  # 6, 7
             a = Λ[0, t]
             b = Λ[1, τ]
@@ -329,6 +333,9 @@ def cpu_SSR(raw_signal,**kargs):
             SR[:, z] = x11  # 8 | dim: 3
             z += 1
 
+        # print(time.perf_counter())
+        # print('--------------------------------')
+        
         # build p and add it to the final pulse signal
         s0 = SR[0, :]  # dim: l
         s1 = SR[1, :]  # dim: l
@@ -362,7 +369,11 @@ def cpu_SSR(raw_signal,**kargs):
             The (sorted) eigenvectors of the correlation matrix
         """
         # get eigenvectors and sort them according to eigenvalues (largest first)
-        L, U = np.linalg.eig(C)  # dim Λ: 3 | dim U: 3x3
+        C_tf = tf.convert_to_tensor(C, np.float32)
+        L, U = tf.linalg.eig(C_tf)  # dim Λ: 3 | dim U: 3x3     time 0.0028  
+        L = L.numpy()
+        U = U.numpy()         
+        # L, U = np.linalg.eig(C)  # dim Λ: 3 | dim U: 3x3      time 0.0033
         idx = L.argsort()  # dim: 3x1
         idx = idx[::-1]  # dim: 1x3
         L_ = L[idx]  # dim: 3
@@ -371,8 +382,8 @@ def cpu_SSR(raw_signal,**kargs):
         return L_, U_
     # ----------------------------------- #
 
-    fps = int(kargs['fps'])
-
+    # fps = int(kargs['fps'])
+    fps = 30                    #暫時設30
     raw_sig = raw_signal
     K = len(raw_sig)
     l = int(fps)
@@ -383,17 +394,17 @@ def cpu_SSR(raw_signal,**kargs):
     U = np.zeros((3, 3, K), dtype=np.float32)  # dim: 3x3xK
 
     for k in range(K):
-        n_roi = len(raw_sig[k])
+        # n_roi = len(raw_sig[k])
         VV = []
         V = raw_sig[k].astype(np.float32)
         idx = V!=0
         idx2 = np.logical_and(np.logical_and(idx[:,:,0], idx[:,:,1]), idx[:,:,2])
         V_skin_only = V[idx2]
         VV.append(V_skin_only)
-        
         VV = np.vstack(VV)
 
         C = __build_correlation_matrix(VV)  #dim: 3x3
+
 
         # get: eigenvalues Λ, eigenvectors U
         L[:,k], U[:,:,k] = __eigs(C)  # dim Λ: 3 | dim U: 3x3
