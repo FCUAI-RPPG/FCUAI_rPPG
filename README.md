@@ -2,3 +2,5 @@
 
 主要是用PYVHR
 目前還在修改中
+
+CHROM、LGI、2SR能用
