@@ -2,7 +2,6 @@ import sys
 sys.path.append("D://rPPG//FCUAI_rPPG_workplace//pyVHR")
 import warnings
 warnings.filterwarnings('ignore')
-from threading import Thread
 from time import sleep
 from video_capture import VideoCapture
 from params import Params
@@ -21,12 +20,13 @@ from BVP.BVP import *
 from BPM.BPM import *
 from BVP.methods import *
 from BVP.filters import *
+import tensorflow as tf
 import PySimpleGUI as sg
 import numpy as np
 import plotly.graph_objects as go
 import queue
-import csv
 from datetime import datetime
+import threading
 
 
 class SharedData:
@@ -43,19 +43,19 @@ class SharedData:
         self.q_saveTimes = queue.Queue()
         ###TEST###
 
-def SaveData():
-    np.save("testBVP.npy", bvpSave)
+# def SaveData():
+#     np.save("testBVP.npy", bvpSave)
 
-    dataset = []
-    for i in range(len(bpmSave)):
-        row = []
-        row.append(bpmTime[i])
-        row.append(bpmSave[i])
-        dataset.append(row)
+#     dataset = []
+#     for i in range(len(bpmSave)):
+#         row = []
+#         row.append(bpmTime[i])
+#         row.append(bpmSave[i])
+#         dataset.append(row)
 
-    with open('testBPM.csv', 'w') as f:
-        write = csv.writer(f)
-        write.writerows(dataset)
+#     with open('testBPM.csv', 'w') as f:
+#         write = csv.writer(f)
+#         write.writerows(dataset)
 
 def VHRroutine(sharedData):
     
@@ -72,6 +72,8 @@ def VHRroutine(sharedData):
     loc5 = []
     ctr = 0
     currentBPM = 0
+    state =0
+    interval = 3
     patchNum = 0
     movement = 5
     global last_bpm
@@ -145,9 +147,8 @@ def VHRroutine(sharedData):
     tot_frames = int(Params.tot_sec*fps)
 
     sig = []
-    raw_sig = []
     processed_frames_count = 0
-    sig_buff_dim = int(fps * Params.winSize)
+    sig_buff_dim = int(fps * Params.winSize)                #30*6=180偵
     sig_stride = int(fps * Params.stride)                   #改window大小的地方
     sig_buff_counter = sig_stride
 
@@ -245,16 +246,15 @@ def VHRroutine(sharedData):
                 ### skin extraction ###
                 cropped_skin_im, full_skin_im = skin_ex.extract_skin(
                     image, ldmks)
-                # print(len(cropped_skin_im))
             else:
-                cropped_skin_im = np.zeros_like(image)
-                full_skin_im = np.zeros_like(image)
+                cropped_skin_im = tf.zeros_like(image)
+                full_skin_im = tf.zeros_like(image)
             ### SIG ###
             if Params.approach == 'patches':#選patch跑這裡/////////////////////////////////////////////////////////
-                if Params.method['method_func'] ==  cpu_SSR:               #測試2SR,做padding把臉以外的值填充0
-                    temp = np.pad(cropped_skin_im,((0,full_skin_im.shape[0]-cropped_skin_im.shape[0]),(full_skin_im.shape[1]-cropped_skin_im.shape[1],0),(0,0)),'constant',constant_values=(0,0))
-                    magic_ldmks = np.array(
-                        ldmks[Params.landmarks_list], dtype=np.float32)
+                if Params.method['method_func'] ==  gpu_2SR:               #測試2SR,做padding把臉以外的值填充0
+                    temp = tf.pad(cropped_skin_im,[[0,full_skin_im.shape[0]-cropped_skin_im.shape[0]],[full_skin_im.shape[1]-cropped_skin_im.shape[1],0],[0,0]])
+                    magic_ldmks =tf.constant(
+                        ldmks[Params.landmarks_list], dtype=tf.dtypes.float32)
                 else:
                     magic_ldmks = np.array(
                         ldmks[Params.landmarks_list], dtype=np.float32)
@@ -270,13 +270,13 @@ def VHRroutine(sharedData):
             if send_images_count == send_images_stride:
                 send_images_count = 0
 
-                ###TEST###
-                # # idx: 59 = 234, idx: 7 = 10
-                # # idx: 80 = 345, idx: 45 = 152
-                # # height = int(ldmks[45, 0]) - int(ldmks[5,0])
+                ###TEST###先省略
+                # idx: 59 = 234, idx: 7 = 10
+                # idx: 80 = 345, idx: 45 = 152
+                # height = int(ldmks[45, 0]) - int(ldmks[5,0])
                 # leftup_label = (int(ldmks[25, 1]), int(ldmks[25,0]))
                 # rightdown_label = (int(ldmks[80, 1]), int(ldmks[80, 0]))
-
+                
                 cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 255, 0), 2)
                 min_x  = 1000
                 min_y  = 1000
@@ -285,7 +285,7 @@ def VHRroutine(sharedData):
 
                 ###TEST###
 
-                ###TEST###
+                ###TEST###先省略
                 m = 0
                 loc5.append((int(ldmks[5, 1]), int(ldmks[5, 0])))
                 mtx = np.array(loc5)
@@ -304,35 +304,44 @@ def VHRroutine(sharedData):
                 sharedData.q_video_image.put(image)
                 if Params.visualize_skin == True:
                     sharedData.q_skin_image.put(full_skin_im)
-                if Params.approach == 'patches' and Params.visualize_landmarks == True:
-                    annotated_image = full_skin_im.copy()
-                    for idx in Params.landmarks_list:       #/////////////idx為mediapipe的468個點中的100個點
-                        cv2.circle(
-                            annotated_image, (int(ldmks[idx, 1]), int(ldmks[idx, 0])), radius=0, color=Params.font_color, thickness=-1)
-                        if Params.visualize_landmarks_number == True:
-                            cv2.putText(annotated_image, str(idx),
-                                        (int(ldmks[idx, 1]), int(ldmks[idx, 0])), cv2.FONT_HERSHEY_SIMPLEX, Params.font_size,  Params.font_color,  1)
-                    if Params.visualize_patches == True:
-                        if Params.patches == "squares":
-                            sides = [Params.squares_dim, ] * len(magic_ldmks)
-                            sides = np.array(sides)
-                            annotated_image = draw_rects(
-                                annotated_image, np.array(magic_ldmks[:, 1]), np.array(magic_ldmks[:, 0]), sides, sides, color)
-                        elif Params.patches == "rects":
-                            rects_dims = np.array(Params.rects_dims)
-                            annotated_image = draw_rects(
-                                annotated_image, np.array(magic_ldmks[:, 1]),
-                                np.array(magic_ldmks[:, 0]), rects_dims[:,0],rects_dims[:,1] , color)
-                    # visualize patches
-                    sharedData.q_patches_image.put(annotated_image)
+                    
+                # if Params.approach == 'patches' and Params.visualize_landmarks == True:
+                #     annotated_image = full_skin_im.copy()
+                #     for idx in Params.landmarks_list:       #/////////////idx為mediapipe的468個點中的100個點
+                #         cv2.circle(
+                #             annotated_image, (int(ldmks[idx, 1]), int(ldmks[idx, 0])), radius=0, color=Params.font_color, thickness=-1)
+                #         if Params.visualize_landmarks_number == True:
+                #             cv2.putText(annotated_image, str(idx),
+                #                         (int(ldmks[idx, 1]), int(ldmks[idx, 0])), cv2.FONT_HERSHEY_SIMPLEX, Params.font_size,  Params.font_color,  1)
+                #     if Params.visualize_patches == True:
+                #         if Params.patches == "squares":
+                #             sides = [Params.squares_dim, ] * len(magic_ldmks)
+                #             sides = np.array(sides)
+                #             annotated_image = draw_rects(
+                #                 annotated_image, np.array(magic_ldmks[:, 1]), np.array(magic_ldmks[:, 0]), sides, sides, color)
+                #         elif Params.patches == "rects":
+                #             rects_dims = np.array(Params.rects_dims)
+                #             annotated_image = draw_rects(
+                #                 annotated_image, np.array(magic_ldmks[:, 1]),
+                #                 np.array(magic_ldmks[:, 0]), rects_dims[:,0],rects_dims[:,1] , color)
+                #     # visualize patches
+                #     sharedData.q_patches_image.put(annotated_image)
             else:
                 send_images_count += 1
 
+            if len(cropped_skin_im)<=170:               #抓到的臉部太少，重新計算
+                processed_frames_count = 0
+                sig.clear()
+                state = 0
+                currentBPM = 0
+                
+            
             if processed_frames_count > sig_buff_dim:
-                sig = sig[1:]                   #取第2個到最後，不太懂?
-                if sig_buff_counter == 0:
+                sig = sig[1:]                   #取第2個到最後，也就是只取後30偵
+                if sig_buff_counter == 0 :
                     sig_buff_counter = sig_stride
-                    if Params.method['method_func'] != cpu_SSR:
+                    state+=1
+                    if Params.method['method_func'] != gpu_2SR:
                         # sig_buff_counter = sig_stride
                         copy_sig = np.array(sig, dtype=np.float32)
                         copy_sig = np.swapaxes(copy_sig, 0, 1)
@@ -341,7 +350,7 @@ def VHRroutine(sharedData):
                         ### Pre_filtering ###////////////////////////////////////patch在這裡被去除的////////////////////
                         if Params.approach == 'patches':
                             copy_sig = rgb_filter_th(copy_sig, **{'RGB_LOW_TH':  np.int32(Params.color_low_threshold),
-                                                                  'RGB_HIGH_TH': np.int32(Params.color_high_threshold)})
+                                                                'RGB_HIGH_TH': np.int32(Params.color_high_threshold)})
                         for filt in Params.pre_filter:
                             if filt != {}:
                                 if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
@@ -357,89 +366,92 @@ def VHRroutine(sharedData):
                         copy_sig = np.array(sig, dtype=np.float32)
                     bvp = np.zeros((0, 1), dtype=np.float32)
                     ### BVP ###
-                    # if Params.method['method_func'] == cpu_SSR:
-                    #         bvp = signals_to_bvps_cpu(
-                    #             copy_raw_sig, Params.method['method_func'], Params.method['params'])
-                    if Params.method['device_type'] == 'cpu':
-                        bvp = signals_to_bvps_cpu(
-                            copy_sig, Params.method['method_func'], Params.method['params'])         
-                    elif Params.method['device_type'] == 'torch':
-                        bvp = signals_to_bvps_torch(
-                            copy_sig, Params.method['method_func'], Params.method['params'])
-                    elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
-                        bvp = signals_to_bvps_cuda(
-                            copy_sig, Params.method['method_func'], Params.method['params'])       
+                    if state % interval==1:                     #interval 預設3秒
+                        q = queue.Queue()
+                        print(time.perf_counter())
+                        if Params.method['device_type'] == 'cpu': 
+                            t = threading.Thread(target = signals_to_bvps_cpu,args = (copy_sig,q, Params.method['method_func'], Params.method['params']))
+                            t.start()                
+                        elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
+                            t = threading.Thread(target = signals_to_bvps_cuda,args = (copy_sig,q, Params.method['method_func'], Params.method['params']))
+                            t.start()
+                        bpm = currentBPM
+                    elif state % interval!=1 and state % interval!=0:
+                        bpm = currentBPM
+                    elif state % interval==0:
+                        t.join()
+                        bvp =q.get() 
+                           
 
                     ### Post_filtering ###
-                    for filt in Params.pre_filter:
-                        if filt != {}:
-                            bvp = np.expand_dims(bvp, axis=1)
-                            if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
-                                filt['params']['fps'] = float(fps)
-                            if filt['params'] == {}:
-                                bvp = filt['filter_func'](bvp)
+                        for filt in Params.pre_filter:
+                            if filt != {}:
+                                bvp = tf.expand_dims(bvp, axis=1)
+                                if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
+                                    filt['params']['fps'] = float(fps)
+                                if filt['params'] == {}:
+                                    bvp = filt['filter_func'](bvp)
+                                else:
+                                    bvp = filt['filter_func'](
+                                        bvp, **filt['params'])
+                                bvp = tf.squeeze(bvp, axis=1)
+                        
+                        ###TEST###
+                        # bvpSave.append(bvp)       先省略
+                        patchNum = len(bvp)
+                        ###TEST###
+
+                        ### BPM ###
+                        if Params.cuda:
+                            #///////////////////////////////////////////////////////////////////////用這個提取BPM
+                            bvp_device = np.asarray(bvp)
+                            if BPM_obj == None:
+                                #///////////////////////////////////////////////////////////////////////先跑1次
+                                last_bpm = 0
+                                bpm_num = 0
+                                BPM_obj = BPMcuda(bvp_device, fps,
+                                                minHz=Params.minHz, maxHz=Params.maxHz)
                             else:
-                                bvp = filt['filter_func'](
-                                    bvp, **filt['params'])
-                            bvp = np.squeeze(bvp, axis=1)
-                    
-                    ###TEST###
-                    bvpSave.append(bvp)
-                    patchNum = len(bvp)
-                    ###TEST###
-
-                    ### BPM ###
-                    if Params.cuda:
-                        #///////////////////////////////////////////////////////////////////////用這個提取BPM
-                        bvp_device = cupy.asarray(bvp)
-                        if BPM_obj == None:
-                            #///////////////////////////////////////////////////////////////////////先跑1次
-                            last_bpm = 0
-                            bpm_num = 0
-                            BPM_obj = BPMcuda(bvp_device, fps,
-                                              minHz=Params.minHz, maxHz=Params.maxHz)
+                                #///////////////////////////////////////////////////////////////////////第2次以後都是這裡
+                                BPM_obj.data = bvp_device
+                            if Params.BPM_extraction_type == "welch":
+                                #///////////////////////////////////////////////////////////////////////會跑這條
+                                bpm = BPM_obj.BVP_to_BPM()
+                                bpm = cupy.asnumpy(bpm)
+                                # bpm , bpm2 = BPM_obj.BVP_to_BPM_2()
+                                # bpm = cupy.asnumpy(bpm)
+                                # bpm2 = cupy.asnumpy(bpm2)
+                                # /////////////////////////////////////測試抓第2大訊號////////////////////////
+                            elif Params.BPM_extraction_type == "psd_clustering":
+                                bpm = BPM_obj.BVP_to_BPM_PSD_clustering()
                         else:
-                            #///////////////////////////////////////////////////////////////////////第2次以後都是這裡
-                            BPM_obj.data = bvp_device
-                        if Params.BPM_extraction_type == "welch":
-                            #///////////////////////////////////////////////////////////////////////會跑這條
-                            bpm = BPM_obj.BVP_to_BPM()
-                            bpm = cupy.asnumpy(bpm)
-                            # bpm , bpm2 = BPM_obj.BVP_to_BPM_2()
-                            # bpm = cupy.asnumpy(bpm)
-                            # bpm2 = cupy.asnumpy(bpm2)
-                            # /////////////////////////////////////測試抓第2大訊號////////////////////////
-                        elif Params.BPM_extraction_type == "psd_clustering":
-                            bpm = BPM_obj.BVP_to_BPM_PSD_clustering()
-                    else:
-                        if BPM_obj == None:
-                            BPM_obj = BPM(bvp, fps, minHz=Params.minHz,
-                                          maxHz=Params.maxHz)
-                        else:
-                            BPM_obj.data = bvp
-                        if Params.BPM_extraction_type == "welch":
-                            bpm = BPM_obj.BVP_to_BPM()
-                        elif Params.BPM_extraction_type == "psd_clustering":
-                            bpm = BPM_obj.BVP_to_BPM_PSD_clustering()
-                    if Params.approach == 'patches':  # Median of multi BPMs
-                        if len(bpm.shape) > 0 and bpm.shape[0] == 0:
-                            bpm = np.float32(0.0)
-                        else:
-                            # //////////////////////////////////////////////////////////////////測試取第1和第2諧波後寫檔////////////////////////////
-                            bpm_data = pd.Series(bpm)
-                            # bpm_data_sec = pd.Series(bpm2)
-                            bpm = np.float32(np.median(bpm_data))
-                            # bpm_median = pd.Series(bpm)
-                            # if os.path.exists('C:\\Users\\user\\Desktop\\bpm_data.csv'):    
-                            #     old_bpm_data = pd.read_csv('C:\\Users\\user\\Desktop\\bpm_data.csv')
-                            #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True)    #bpm_data_sec,bpm_median
-                            #     pd.concat([old_bpm_data,bpm_data],axis =1).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False)
-                            # else:
-                            #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False) #bpm_data_sec,bpm_median
-                            # #//////////////////////////////////////////////////////////////bpm取所有patch的中位數
-                    
+                            if BPM_obj == None:
+                                BPM_obj = BPM(bvp, fps, minHz=Params.minHz,
+                                            maxHz=Params.maxHz)
+                            else:
+                                BPM_obj.data = bvp
+                            if Params.BPM_extraction_type == "welch":
+                                bpm = BPM_obj.BVP_to_BPM()
+                            elif Params.BPM_extraction_type == "psd_clustering":
+                                bpm = BPM_obj.BVP_to_BPM_PSD_clustering()
+                        if Params.approach == 'patches':  # Median of multi BPMs
+                            if len(bpm.shape) > 0 and bpm.shape[0] == 0:
+                                bpm = np.float32(0.0)
+                            else:
+                                # //////////////////////////////////////////////////////////////////測試取第1和第2諧波後寫檔////////////////////////////
+                                # bpm_data = pd.Series(bpm)
+                                # bpm_data_sec = pd.Series(bpm2)
+                                bpm = np.float32(np.median(bpm))
+                                # bpm_median = pd.Series(bpm)
+                                # if os.path.exists('C:\\Users\\user\\Desktop\\bpm_data.csv'):    
+                                #     old_bpm_data = pd.read_csv('C:\\Users\\user\\Desktop\\bpm_data.csv')
+                                #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True)    #bpm_data_sec,bpm_median
+                                #     pd.concat([old_bpm_data,bpm_data],axis =1).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False)
+                                # else:
+                                #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False) #bpm_data_sec,bpm_median
+                                # #//////////////////////////////////////////////////////////////bpm取所有patch的中位數
+                
                     sharedData.q_bpm.put(bpm)
-
                     ###TEST###
                     currentBPM = np.round(bpm, 2)
 

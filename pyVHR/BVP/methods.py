@@ -3,9 +3,9 @@ import numpy as np
 import torch
 import tensorflow as tf
 import time
+from concurrent.futures import ThreadPoolExecutor
 from sklearn.decomposition import PCA
 from BVP.utils import jadeR
-from numba import jit
 
 
 """
@@ -47,6 +47,7 @@ def cupy_CHROM(signal):
 
     De Haan, G., & Jeanne, V. (2013). Robust pulse rate from chrominance-based rPPG. IEEE Transactions on Biomedical Engineering, 60(10), 2878-2886.
     """
+    signal = cupy.asnumpy(signal)
     X = signal
     Xcomp = 3*X[:, 0] - 2*X[:, 1]
     Ycomp = (1.5*X[:, 0])+X[:, 1]-(1.5*X[:, 2])
@@ -272,7 +273,29 @@ def cpu_ICA(signal, **kargs):
     # collect
     return bvp
 
-def cpu_SSR(raw_signal,**kargs):
+def parallel(t,τ, U, Λ):
+    a = Λ[0, t]
+    b = Λ[1, τ]
+    c = Λ[2, τ]
+    d = U[:, 0, t].T
+    e = U[:, 1, τ]
+    f = U[:, 2, τ]
+    g = U[:, 1, τ].T
+    h = U[:, 2, τ].T
+    x1 = a / b
+    x2 = a / c
+    x3 = np.outer(e, g)
+    x4 = np.dot(d, x3)
+    x5 = np.outer(f, h)
+    x6 = np.dot(d, x5)
+    x7 = np.sqrt(x1)
+    x8 = np.sqrt(x2)
+    x9 = x7*x4
+    x10 = x8*x6
+    x11 = x9 + x10
+    return x11
+    
+def gpu_2SR(raw_signal,**kargs):
     """
     SSR method on CPU using Numpy.
 
@@ -283,9 +306,11 @@ def cpu_SSR(raw_signal,**kargs):
 
     Wang, W., Stuijk, S., & De Haan, G. (2015). A novel algorithm for remote photoplethysmography: Spatial subspace rotation. IEEE transactions on biomedical engineering, 63(9), 1974-1984.
     """
+    
     # utils functions #
-    @jit
+
     def __build_p(τ, k, l, U, Λ):
+        buildptimeS = time.perf_counter()
         """
         builds P
         Parameters
@@ -304,12 +329,28 @@ def cpu_SSR(raw_signal,**kargs):
             The p signal to add to the pulse.
         """
         # SR'
+        # SR = tf.zeros((3, l), tf.dtypes.float32)  # dim: 3xl
         SR = np.zeros((3, l), np.float32)  # dim: 3xl
         z = 0
         # print(time.perf_counter())
-        
         #寫成含式做平行化看看
-        
+        # print('--------------------------------')
+        # print(time.perf_counter())
+
+        # with ThreadPoolExecutor(max_workers=4) as executor:
+        #     tasks = {}
+        #     for t in range(τ, k, 1):
+        #         task = executor.submit(parallel, t,τ,U,Λ)
+        #         tasks[task] = z
+        #         z+=1
+
+        # for task in tasks:
+        #     z = tasks[task]
+        #     result = task.result()
+        #     SR[:, z] = result
+            
+        # print(time.perf_counter())
+        # print('--------------------------------')
         for t in range(τ, k, 1):  # 6, 7
             a = Λ[0, t]
             b = Λ[1, τ]
@@ -327,8 +368,8 @@ def cpu_SSR(raw_signal,**kargs):
             x6 = np.dot(d, x5)
             x7 = np.sqrt(x1)
             x8 = np.sqrt(x2)
-            x9 = x7 * x4
-            x10 = x8 * x6
+            x9 = x7*x4
+            x10 = x8*x6
             x11 = x9 + x10
             SR[:, z] = x11  # 8 | dim: 3
             z += 1
@@ -341,20 +382,22 @@ def cpu_SSR(raw_signal,**kargs):
         s1 = SR[1, :]  # dim: l
         p = s0 - ((np.std(s0) / np.std(s1)) * s1)  # 10 | dim: l
         p = p - np.mean(p)  # 11
+        # print('build p time：'+str(time.perf_counter()-buildptimeS))
         return p  # dim: l
         
     def __build_correlation_matrix(V):
-        # V dim: (W×H)x3
+        buildctimeS = time.perf_counter()
         #V = np.unique(V, axis=0)
         V_T = V.T  # dim: 3x(W×H)
         N = V.shape[0]
         # build the correlation matrix
-        C = np.dot(V_T, V)  # dim: 3x3
+        C = np.dot(V_T, V)  # dim: 3x3       V_T dim: 3x(W×H)   V dim: (W×H)x3  
         C = C / N
-
+        # print('build correlation time：'+str(time.perf_counter()-buildctimeS))
         return C
 
     def __eigs(C):
+        eigtimeS = time.perf_counter()
         """
         get eigenvalues and eigenvectors, sort them.
         Parameters
@@ -369,16 +412,17 @@ def cpu_SSR(raw_signal,**kargs):
             The (sorted) eigenvectors of the correlation matrix
         """
         # get eigenvectors and sort them according to eigenvalues (largest first)
-        C_tf = tf.convert_to_tensor(C, np.float32)
+        C_tf = tf.convert_to_tensor(C, tf.float32)
         L, U = tf.linalg.eig(C_tf)  # dim Λ: 3 | dim U: 3x3     time 0.0028  
         L = L.numpy()
         U = U.numpy()         
         # L, U = np.linalg.eig(C)  # dim Λ: 3 | dim U: 3x3      time 0.0033
         idx = L.argsort()  # dim: 3x1
         idx = idx[::-1]  # dim: 1x3
+        # idx = np.squeeze(idx)
         L_ = L[idx]  # dim: 3
         U_ = U[:, idx]  # dim: 3x3
-
+        # print('eig time：'+str(time.perf_counter()-eigtimeS))
         return L_, U_
     # ----------------------------------- #
 
@@ -393,32 +437,33 @@ def cpu_SSR(raw_signal,**kargs):
     L = np.zeros((3, K), dtype=np.float32)  # dim: 3xK
     U = np.zeros((3, 3, K), dtype=np.float32)  # dim: 3x3xK
 
+    i=0
     for k in range(K):
+        # first_check = time.perf_counter()
+        # print('first loop check point time'+str(first_check-looptimeS))
         # n_roi = len(raw_sig[k])
         VV = []
         V = raw_sig[k].astype(np.float32)
         idx = V!=0
-        idx2 = np.logical_and(np.logical_and(idx[:,:,0], idx[:,:,1]), idx[:,:,2])
+        idx2 = np.bitwise_and(np.bitwise_and(idx[:,:,0], idx[:,:,1]), idx[:,:,2])
         V_skin_only = V[idx2]
         VV.append(V_skin_only)
         VV = np.vstack(VV)
-
         C = __build_correlation_matrix(VV)  #dim: 3x3
-
-
         # get: eigenvalues Λ, eigenvectors U
         L[:,k], U[:,:,k] = __eigs(C)  # dim Λ: 3 | dim U: 3x3
-
         # build p and add it to the pulse signal P
         if k >= l:  # 5
             tau = k - l  # 5
             p = __build_p(tau, k, l, U, L)  # 6, 7, 8, 9, 10, 11 | dim: l
             P[tau:k] += p  # 11
-
-        if np.isnan(np.sum(P)):
+        if tf.math.is_nan(tf.math.reduce_sum(P)):
             print('NAN')
             print(raw_sig[k])
-            
+        i+=1
     bvp = P
-    bvp = np.expand_dims(bvp,axis=0)
+    bvp = tf.expand_dims(bvp,axis=0)
     return bvp
+
+    
+

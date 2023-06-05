@@ -1,6 +1,7 @@
 import cupy
 import numpy as np
 import torch
+import tensorflow as tf
 
 
 """
@@ -8,12 +9,13 @@ This module contains methods for trasforming an input signal
 in a BVP signal using a rPPG method (see pyVHR.BVP.methods).
 """
 
-def signals_to_bvps_cuda(sig, cupy_method, params={}):
+def signals_to_bvps_cuda(sig, gpu_method, params={}):
     """
     Transform an input RGB signal in a BVP signal using a rPPG method (see pyVHR.BVP.methods).
     This method must use cupy and executes on GPU. You can pass also non-RGB signal but the method used must handle its shape.
 
     Args:
+        sig(float32 tensor)
         sig (float32 ndarray): RGB Signal as float32 ndarray with shape  [num_estimators, rgb_channels, num_frames].
             You can pass also a generic signal but the method used must handle its shape and type.
         cupy_method: a method that comply with the fucntion signature documented in pyVHR.BVP.methods. This method must use Cupy.
@@ -24,12 +26,12 @@ def signals_to_bvps_cuda(sig, cupy_method, params={}):
     """
     if sig.shape[0] == 0:
         return np.zeros((0, sig.shape[2]), dtype=sig.dtype)
-    gpu_sig = cupy.asarray(sig)        
+    gpu_sig = np.array(sig)       
     if len(params) > 0:#/////////////////////////////////////////////cupy_method = CHROM或其他方法
-        bvps = cupy_method(gpu_sig, **params)
+        bvps = gpu_method(gpu_sig, **params)
     else:
-        bvps = cupy_method(gpu_sig)         #CHROM走這裡
-    r_bvps = cupy.asnumpy(bvps)     
+        bvps = gpu_method(gpu_sig)         #CHROM走這裡
+    r_bvps = bvps
     gpu_sig = None
     bvps = None
     return r_bvps
@@ -62,7 +64,7 @@ def signals_to_bvps_torch(sig, torch_method, params={}):
     return bvps.numpy()
 
 
-def signals_to_bvps_cpu(sig, cpu_method, params={}):
+def signals_to_bvps_cpu(sig,q, cpu_method, params={}):
     """
     Transform an input RGB signal in a BVP signal using a rPPG 
     method (see pyVHR.BVP.methods).
@@ -86,7 +88,8 @@ def signals_to_bvps_cpu(sig, cpu_method, params={}):
         bvps = cpu_method(cpu_sig, **params)
     else:
         bvps = cpu_method(cpu_sig)
-    return bvps
+    q.put(bvps)
+    # return bvps
 
 
 def RGB_sig_to_BVP(windowed_sig, fps, device_type=None, method=None, params={}):
