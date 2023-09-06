@@ -9,7 +9,7 @@ This module contains methods for trasforming an input signal
 in a BVP signal using a rPPG method (see pyVHR.BVP.methods).
 """
 
-def signals_to_bvps_cuda(sig, gpu_method, params={}):
+def signals_to_bvps_cuda(sig,queue, gpu_method, params={}):
     """
     Transform an input RGB signal in a BVP signal using a rPPG method (see pyVHR.BVP.methods).
     This method must use cupy and executes on GPU. You can pass also non-RGB signal but the method used must handle its shape.
@@ -25,16 +25,19 @@ def signals_to_bvps_cuda(sig, gpu_method, params={}):
         float32 ndarray: BVP signal as float32 ndarray with shape [num_estimators, num_frames].
     """
     if sig.shape[0] == 0:
-        return np.zeros((0, sig.shape[2]), dtype=sig.dtype)
-    gpu_sig = np.array(sig)       
-    if len(params) > 0:#/////////////////////////////////////////////cupy_method = CHROM或其他方法
-        bvps = gpu_method(gpu_sig, **params)
+        queue.put(np.zeros((0, sig.shape[2]), dtype=sig.dtype))
     else:
-        bvps = gpu_method(gpu_sig)         #CHROM走這裡
-    r_bvps = bvps
-    gpu_sig = None
-    bvps = None
-    return r_bvps
+        gpu_sig = cupy.asarray(sig)       
+        if len(params) > 0:#/////////////////////////////////////////////cupy_method = CHROM或其他方法
+            bvps = gpu_method(gpu_sig, **params)
+        else:
+            bvps = gpu_method(gpu_sig)         #CHROM走這裡
+        bvps = cupy.asnumpy(bvps)
+        queue.put(bvps)
+    # r_bvps = bvps
+    # gpu_sig = None
+    # bvps = None
+    # return r_bvps
 
 
 def signals_to_bvps_torch(sig, torch_method, params={}):
@@ -64,7 +67,7 @@ def signals_to_bvps_torch(sig, torch_method, params={}):
     return bvps.numpy()
 
 
-def signals_to_bvps_cpu(sig,q, cpu_method, params={}):
+def signals_to_bvps_cpu(sig,queue, cpu_method, params={}):
     """
     Transform an input RGB signal in a BVP signal using a rPPG 
     method (see pyVHR.BVP.methods).
@@ -82,13 +85,14 @@ def signals_to_bvps_cpu(sig,q, cpu_method, params={}):
         float32 ndarray: BVP signal as float32 ndarray with shape [num_estimators, num_frames].
     """
     if sig.shape[0] == 0:
-        return np.zeros((0, sig.shape[2]), dtype=sig.dtype)
-    cpu_sig = np.array(sig)
-    if len(params) > 0:             #//////////////cupy_method = SSR走cpu
-        bvps = cpu_method(cpu_sig, **params)
+        queue.put(np.zeros((0, sig.shape[2]), dtype=sig.dtype))
     else:
-        bvps = cpu_method(cpu_sig)
-    q.put(bvps)
+        cpu_sig = np.array(sig)
+        if len(params) > 0:             #//////////////cupy_method = SSR走cpu
+            bvps = cpu_method(cpu_sig, **params)
+        else:
+            bvps = cpu_method(cpu_sig)
+        queue.put(bvps)
     # return bvps
 
 

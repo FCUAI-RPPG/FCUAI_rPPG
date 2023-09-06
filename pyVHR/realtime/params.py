@@ -1,7 +1,7 @@
 import sys
 sys.path.append("D://rPPG//FCUAI_rPPG_workplace//pyVHR")
 from pyVHR.extraction.utils import MagicLandmarks
-from pyVHR.BVP.methods import *
+from BVP.methods import *
 from pyVHR.BVP.filters import *
 from pyVHR.extraction.utils import MagicLandmarks
 
@@ -18,6 +18,8 @@ class Params:
     winSize = 6             #winsize基本上代表秒數
     stride = 1
     cuda = True
+    resize = True
+    resize_size = 72
     skin_extractor = 'convexhull'  # or faceparsing
     approach = 'patches'  # or holistic
     patches = 'squares'  # or rects
@@ -48,7 +50,7 @@ class Params:
 
     # BVP method
     # dictionary of {method_func, device_type, params}
-    method = {'method_func': cpu_SSR,                    #cpu_SSR、cupy_CHROM
+    method = {'method_func': gpu_2SR,                    #cpu_SSR、cupy_CHROM
               'device_type': 'cpu', 'params': {}}          #'device_type': 'cuda'
 
     # Post filtering

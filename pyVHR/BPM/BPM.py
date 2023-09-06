@@ -11,6 +11,7 @@ from plot.visualize import VisualizeParams
 from BPM.utils import *
 from scipy.stats import median_absolute_deviation as mad
 from scipy.signal import find_peaks
+import tensorflow as tf
 
 """
 This module contains all the class and the methods for transforming 
@@ -129,7 +130,7 @@ class BPMcuda:
         self.verb = verb
         self.minHz = minHz
         self.maxHz = maxHz
-        self.gpuData = cupy.asarray(
+        self.gpuData = np.asarray(
             [self.fps, self.nFFT, self.minHz, self.maxHz])
         self.gmodel = Model(gaussian, independent_vars=['x', 'mu', 'a'])
 
@@ -144,11 +145,10 @@ class BPMcuda:
         # -- interpolation for less than 256 samples
         _, n = self.data.shape
         if self.data.shape[0] == 0:
-            return cupy.float32(0.0)
+            return np.float32(0.0)
         Pfreqs, Power = Welch_cuda(self.data, self.gpuData[0], self.gpuData[2], self.gpuData[3], self.gpuData[1])
         # -- BPM estimate 
-        Pmax = cupy.argmax(Power, axis=1)  # power max
-        
+        Pmax = np.argmax(Power, axis=1)  # power max
         return Pfreqs[Pmax.squeeze()]
 
 # ////////////////////////////////////////////////////////////////////////測試抓第2諧波////////////////////////////////////////////

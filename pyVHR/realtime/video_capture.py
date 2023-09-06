@@ -8,9 +8,10 @@ from params import Params
 
 class VideoCapture:
     # bufferless VideoCapture
-    def __init__(self, name, sharedData, fps=None, sleep=False, resize=True):
+    def __init__(self, name, sharedData, fps=None, sleep=False, resize=False):
         self.cap = cv2.VideoCapture(name)               # ,cv2.CAP_DSHOW  加進去會強制使用相機
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 30)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
         self.sleep = sleep
         self.resize = resize
         self.fps = None
@@ -19,11 +20,13 @@ class VideoCapture:
             self.fps = fps
         self.sd = sharedData
         self.t = Thread(target=self._reader)
-        self.t.daemon = False  # when process ends all deamon will be killed
+        self.t.daemon = True  # when process ends all deamon will be killed
         self.t.start()
 
     # read frames as soon as they are available
     def _reader(self):
+        i=0
+        start_time = time.perf_counter()
         while True:
             if not self.sd.q_stop_cap.empty():  # GUI stopped
                 self.sd.q_stop_cap.get()
@@ -31,7 +34,6 @@ class VideoCapture:
                 self.sd.q_frames.put(0)
                 break
             ret, frame = self.cap.read()
-
             if not ret:  # IO error
                 self.sd.q_stop.put(0)  # stop VHR model
                 self.sd.q_frames.put(0)  # end extraction -> send number
@@ -41,19 +43,31 @@ class VideoCapture:
                 if h != 480 or w != 640:
                     frame = cv2.resize(frame, (640, int(640*h/w)),
                                        interpolation=cv2.INTER_NEAREST)
-            self.sd.q_frames.put(frame)
-            ##TEST##
-            localtime = datetime.now()
-            current = localtime.strftime("%Y-%m-%d %H:%M:%S.%f")
-            if Params.startTime is None:
-                Params.startTime = current
-                print("start: {}".format(Params.startTime))
+                    
+            if Params.videoFileName != 0:               #不使用鏡頭時
+                
+                time.sleep(0.0333)
+                i+=1
+                self.sd.q_frames.put(frame)
 
-            self.sd.q_times.put(current)
-            ##TEST##
+                localtime = datetime.now()
+                current = localtime.strftime("%Y-%m-%d %H:%M:%S.%f")
+                if Params.startTime is None:
+                    Params.startTime = current
+                    print("start: {}".format(Params.startTime))
 
-            if self.sleep and self.fps is not None:
-                time.sleep(self.fps / 1000.0)
+                self.sd.q_times.put(current)
+            else:
+                i+=1
+                self.sd.q_frames.put(frame)
+
+                localtime = datetime.now()
+                current = localtime.strftime("%Y-%m-%d %H:%M:%S.%f")
+                if Params.startTime is None:
+                    Params.startTime = current
+                    print("start: {}".format(Params.startTime))
+
+                self.sd.q_times.put(current)
         self.cap.release()
 
 

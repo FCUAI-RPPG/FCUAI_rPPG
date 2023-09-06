@@ -9,6 +9,7 @@ import numpy as np
 from scipy.signal import welch
 import cusignal
 import cupy
+import tensorflow as tf
 
 """
 This module contains usefull methods used in pyVHR.BPM.BPM and
@@ -69,7 +70,7 @@ def Welch_cuda(bvps, fps, minHz=0.65, maxHz=4.0, nfft=2048):
     F, P = cusignal.welch(bvps, nperseg=seglength,
                             noverlap=overlap, fs=fps, nfft=nfft)
     # -- freq subband (0.65 Hz - 4.0 Hz)    39~240  BPM
-    band = cupy.argwhere((F > minHz) & (F < maxHz)).flatten()
+    band = np.argwhere((F > minHz) & (F < maxHz)).flatten()
     Pfreqs = 60*F[band]
     Power = P[:, band]
     
@@ -206,7 +207,7 @@ def optimize_partition(theta, out_fact=1):
     return P, Q, Z, max_theta_P, max_theta_Q 
 
 def gaussian(x,a,mu,sigma):
-    return a*np.exp(-(x-mu)**2/(2*sigma**2))
+    return a*tf.math.exp(-(x-mu)**2/(2*sigma**2))
 
 def gaussian_fit(model,p, x, mu, max):
     result = model.fit(p, x=x, a=max, mu=mu, sigma=1)

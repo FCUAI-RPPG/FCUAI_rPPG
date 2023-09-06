@@ -47,7 +47,7 @@ def cupy_CHROM(signal):
 
     De Haan, G., & Jeanne, V. (2013). Robust pulse rate from chrominance-based rPPG. IEEE Transactions on Biomedical Engineering, 60(10), 2878-2886.
     """
-    signal = cupy.asnumpy(signal)
+    # signal = cupy.asnumpy(signal)
     X = signal
     Xcomp = 3*X[:, 0] - 2*X[:, 1]
     Ycomp = (1.5*X[:, 0])+X[:, 1]-(1.5*X[:, 2])

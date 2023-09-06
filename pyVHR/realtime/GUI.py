@@ -100,6 +100,7 @@ def GUI_MENU():
     window = sg.Window('pyVHR', layout, finalize=True, location=(0, 0))
 
     bpm_plot = []
+    bpm_plot2 = []
     bpm_save = []
     bpm_plot_max = 60
     image = None
@@ -108,6 +109,7 @@ def GUI_MENU():
     patches_image = None
     vhr_t = None
     sd = SharedData()
+    
 
     def create_run_window():
         fps = Params.fps_fixed if Params.fps_fixed is not None else get_fps(
@@ -171,7 +173,7 @@ def GUI_MENU():
 
             ###TEST###
             Params.startTime = None
-            SaveData()
+            # SaveData()
             ###TEST###
 
         elif event in (None, 'Exit',  '-CLOSE-', sg.WIN_CLOSED) and run_window is None:
@@ -202,13 +204,24 @@ def GUI_MENU():
             if not sd.q_bpm.empty():
                 bpm = sd.q_bpm.get()
                 bpm_plot.append(bpm)
+                bpm_len = len(bpm_plot)
                 bpm_save.append(bpm)
-                if len(bpm_plot) >= bpm_plot_max:
+                if bpm_len >= bpm_plot_max:
                     bpm_plot = bpm_plot[1:]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=np.arange(0, len(bpm_plot), Params.stride), y=np.array(bpm_plot),
                                          mode='lines+markers',
-                                         name='lines+markers'))
+                                         name='face',
+                                         marker = {'color': 'red'}))
+                if not sd.q_bpm2.empty():           #第2張臉的bpm
+                    bpm2 = sd.q_bpm2.get()
+                    bpm_plot2.append(bpm2)
+                    if bpm_len >= bpm_plot_max:               #跟著第1張臉一起動
+                        bpm_plot2 = bpm_plot2[1:]
+                    fig.add_trace(go.Scatter(x=np.arange(0, len(bpm_plot), Params.stride), y=np.array(bpm_plot2),
+                                         mode='lines+markers',
+                                         name='face2',
+                                         marker = {'color': 'blue'}))
                 fig.update_layout(
                     autosize=False,
                     width=600,
@@ -257,7 +270,7 @@ def GUI_MENU():
                                  'device_type': 'cpu', 'params': {}}
             elif((values['-use2SR-'])):
                 Params.methodName = "2SR"
-                Params.method = {'method_func': cpu_SSR,
+                Params.method = {'method_func': gpu_2SR,
                                  'device_type': 'cpu', 'params': {}}
             # print(Params.methodName)
             ###TEST###
@@ -370,6 +383,7 @@ def GUI_MENU():
             window['-START-'].update(visible=True)
         if event == '-START-' and not run_window:
             bpm_plot = []
+            bpm_plot2 = []
             bpm_save = []
             image = None
             sd = SharedData()
@@ -394,8 +408,8 @@ if __name__ == '__main__':
     Params.pre_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
 
-    Params.method = {'method_func': cpu_SSR,             #cpu_SSR、cupy_CHROM
-                     'device_type': 'cpu', 'params': {}}   #'device_type': 'cuda'
+    Params.method = {'method_func': gpu_2SR,             #cpu_SSR、cupy_CHROM
+                     'device_type': 'cuda', 'params': {}}   #'device_type': 'cuda'
 
     Params.post_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]

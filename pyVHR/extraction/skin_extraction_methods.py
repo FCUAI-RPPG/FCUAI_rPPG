@@ -11,6 +11,7 @@ import pyVHR
 from scipy.spatial import ConvexHull
 from PIL import Image, ImageDraw
 import requests
+import tensorflow as tf
 
 """
 This module defines classes or methods used for skin extraction.
@@ -116,20 +117,20 @@ class SkinExtractionFaceParsing():
         """
         # crop with bounding box of ldmks; the network works better if the bounding box is bigger
         aviable_ldmks = ldmks[ldmks[:,0] >= 0][:,:2]  
-        min_y, min_x = np.min(aviable_ldmks, axis=0)
-        max_y, max_x = np.max(aviable_ldmks, axis=0)
+        min_y, min_x = tf.math.reduce_min(aviable_ldmks, axis=0)
+        max_y, max_x = tf.math.reduce_max(aviable_ldmks, axis=0)
         min_y *= 0.90
         min_x *= 0.90
         max_y = max_y * 1.10 if max_y * 1.10 < image.shape[0] else image.shape[0]
         max_x = max_x * 1.10 if max_x * 1.10 < image.shape[1] else image.shape[1]
-        cropped_image = np.copy(image[int(min_y):int(max_y),int(min_x):int(max_x) ,:])
-        nda_im = np.array(cropped_image)
+        cropped_image = tf.experimental.numpy.copy(image[int(min_y):int(max_y),int(min_x):int(max_x) ,:])
+        nda_im = tf.make_ndarray(cropped_image)
         # prepare the image for the bisenet network
         cropped_image = self.to_tensor(cropped_image)
-        cropped_image = torch.unsqueeze(cropped_image, 0)
+        cropped_image = tf.expand_dims(cropped_image, 0)
         cropped_skin_img = self.extraction(cropped_image, nda_im)
         # recreate full image using cropped_skin_img
-        full_skin_image = np.zeros_like(image)
+        full_skin_image = tf.zeros_like(image)
         full_skin_image[int(min_y):int(max_y),int(min_x):int(max_x) ,:] = cropped_skin_img
         return cropped_skin_img, full_skin_image
 
@@ -256,7 +257,7 @@ class SkinExtractionConvexHull:
         Returns:
             Cropped skin-image and non-cropped skin-image; both are uint8 ndarray with shape [rows, columns, rgb_channels].
         """
-        from pyVHR.extraction.sig_processing import MagicLandmarks
+        from extraction.sig_processing import MagicLandmarks
         aviable_ldmks = ldmks[ldmks[:,0] >= 0][:,:2]        
         # face_mask convex hull 
         hull = ConvexHull(aviable_ldmks)
