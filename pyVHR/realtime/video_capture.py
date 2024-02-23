@@ -10,6 +10,9 @@ class VideoCapture:
     # bufferless VideoCapture
     def __init__(self, name, sharedData, fps=None, sleep=False, resize=False):
         self.cap = cv2.VideoCapture(name)               # ,cv2.CAP_DSHOW  加進去會強制使用相機
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('I', '4', '2', '0'))
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 30)
         self.cap.set(cv2.CAP_PROP_FPS, 30)
         self.sleep = sleep

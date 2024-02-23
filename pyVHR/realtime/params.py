@@ -17,14 +17,15 @@ class Params:
     tot_sec = 0
     winSize = 6             #winsize基本上代表秒數
     stride = 1
-    cuda = True
+    cuda = False
     resize = True
     resize_size = 72
     skin_extractor = 'convexhull'  # or faceparsing
-    approach = 'patches'  # or holistic
+    approach = 'patches'  # or holistic patches
     patches = 'squares'  # or rects
     type = 'mean'
     landmarks_list = MagicLandmarks.equispaced_facial_points
+    landmark_size = 'small' #mid big
     squares_dim = 30.0
     rects_dims = []
     # extractor params

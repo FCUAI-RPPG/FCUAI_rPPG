@@ -17,40 +17,30 @@ def GUI_MENU():
             [sg.In("", key="-VideoFileName-"),
              sg.FileBrowse(target=("-VideoFileName-"))],
             [sg.Text("Use Method:"),
-             sg.Radio("CHROM", "RADIO9", default=True, key="-useCHROM-"),
-             sg.Radio("LGI", "RADIO9", default=False, key="-useLGI-"),
-             sg.Radio("2SR", "RADIO9", default=True, key="-use2SR-")],
+            #  sg.Radio("CHROM", "RADIO9", default=False, key="-useCHROM-"),
+             sg.Radio("2SR", "RADIO9", default=False, key="-use2SR-"),
+             sg.Radio("Network", "RADIO9", default=True, key="-useNetwork-")],
             [sg.Text("Use CUDA:"),
-             sg.Radio("True", "RADIO1", default=True, key="-cudaTrue-"),
-             sg.Radio("False", "RADIO1", default=False, key="-cudaFalse-")],
+             sg.Radio("True", "RADIO1", default=False, key="-cudaTrue-"),
+             sg.Radio("False", "RADIO1", default=True, key="-cudaFalse-")],
             [sg.Text("Window Size:"),
              sg.In(str(Params.winSize), key="-winSize-", size=(5, 1))],
             [sg.Text("Stride:"),
              sg.In(str(Params.stride), key="-stride-", size=(5, 1))],
             [sg.Text("FPS fixed:"),
              sg.In("None", key="-fpsfixed-", size=(5, 1))],
-            [sg.Text("            ")],
-            [sg.Text("Skin Extractor:"),
-             sg.Radio("Convex Hull", "RADIO2",
-                      default=True, key="-skinConvex-"),
-             sg.Radio("FaceParsing", "RADIO2", default=False, key="-skinFaceParsing-")],
             [sg.Text("ROI:"),
              sg.Radio("Holistic", "RADIO3",
                       default=False, key="-holistic-"),
              sg.Radio("Patches", "RADIO3", default=True, key="-patches-")],
-            [sg.Text("Method for Signal computation:"),
-             sg.Radio("mean", "RADIO0",
-                      default=True, key="-mean-"),
-             sg.Radio("median", "RADIO0", default=False, key="-median-")],
-            [sg.Text("            ")],
-            [sg.Text("Patches type:"),
-             sg.Radio("Squares", "RADIO4",
-                      default=True, key="-squares-"),
-             sg.Radio("Rectangles", "RADIO4", default=False, key="-rects-")],
-            [sg.Text("Landmarks list (ex: [1,2,3]):")],
+            ###
+            [sg.Text("Landmarks size"),
+             sg.Radio('small','RADIO4',default=True, key="-small-"),
+             sg.Radio('mid','RADIO4',default=False, key="-mid-"),
+             sg.Radio('big','RADIO4',default=False, key="-big-")
+             ],
+            ###
             [sg.In("Default", key="-ldmkslist-")],
-            [sg.Text("Squares dimension:"),
-             sg.In(str(Params.squares_dim), key="-squares_dim-", size=(5, 1))],
             [sg.Text("Rects dimension (ex for two landmarks: [[20,15],[10,10]]):")],
             [sg.In("[[],]", key="-rectsdim-")],
             [sg.Text("            ")],
@@ -85,10 +75,6 @@ def GUI_MENU():
              sg.Radio("True", "RADIO7",
                       default=True, key="-visualizepatchestrue-"),
              sg.Radio("False", "RADIO7", default=False, key="-visualizepatchesfalse-")],
-            [sg.Text("\t - Visualize Landmarks number:"),
-             sg.Radio("True", "RADIO8",
-                      default=True, key="-visualizeldmksnumtrue-"),
-             sg.Radio("False", "RADIO8", default=False, key="-visualizeldmksnumfalse-")],
             [sg.Text("            \n Font Color (R,G,B,A)")],
             [sg.In(str(Params.font_color), key='-FontColor-', size=(25, 1))],
             [sg.Text("Font Size: "), sg.In(
@@ -119,9 +105,6 @@ def GUI_MENU():
         if Params.visualize_skin:
             visualize_list.append(
                 [sg.Radio('Skin', "RADIO11", default=False, key="-IN_Visualize_skin-")])
-        if Params.approach == 'patches':
-            visualize_list.append(
-                [sg.Radio('Patches', "RADIO11", default=False, key="-IN_Visualize_patches-")])
 
         run_col1 = [[sg.Text(Params.videoFileName)],
                     [sg.Text("Method use " + Params.methodName)],
@@ -186,16 +169,11 @@ def GUI_MENU():
                 original_image = sd.q_video_image.get()
             if not sd.q_skin_image.empty():
                 skin_image = sd.q_skin_image.get()
-            if not sd.q_patches_image.empty():
-                patches_image = sd.q_patches_image.get()
             if original_image is not None and bool(run_win_values["-IN_Visualize_original-"]):
                 image = original_image
             elif Params.visualize_skin and skin_image is not None and bool(run_win_values["-IN_Visualize_skin-"]):
                 image = skin_image
-            elif Params.visualize_landmarks and patches_image is not None and bool(run_win_values["-IN_Visualize_patches-"]):
-                image = patches_image
             if image is not None:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 imgbytes = cv2.imencode('.png', image)[1].tobytes()
                 run_window['-VIDEO-'].update(data=imgbytes)
                 run_window['-res-'].update("Video resolution: " +
@@ -212,7 +190,8 @@ def GUI_MENU():
                 fig.add_trace(go.Scatter(x=np.arange(0, len(bpm_plot), Params.stride), y=np.array(bpm_plot),
                                          mode='lines+markers',
                                          name='face',
-                                         marker = {'color': 'red'}))
+                                         marker = {'color': 'blue'}))
+
                 if not sd.q_bpm2.empty():           #第2張臉的bpm
                     bpm2 = sd.q_bpm2.get()
                     bpm_plot2.append(bpm2)
@@ -221,13 +200,13 @@ def GUI_MENU():
                     fig.add_trace(go.Scatter(x=np.arange(0, len(bpm_plot), Params.stride), y=np.array(bpm_plot2),
                                          mode='lines+markers',
                                          name='face2',
-                                         marker = {'color': 'blue'}))
+                                         marker = {'color': 'red'}))
                 fig.update_layout(
                     autosize=False,
                     width=600,
                     height=400,
                     margin=dict(l=1, r=1, b=1, t=1, pad=1),
-                    paper_bgcolor="LightSteelBlue",
+                    paper_bgcolor="LightSteelblue",
                 )
                 img_bytes = fig.to_image(format="png")
                 run_window['-BPM_PLOT-'].update(data=img_bytes)
@@ -260,13 +239,13 @@ def GUI_MENU():
                     values['-stride-']) if int(values['-stride-']) > 0 else 1
             window['-stride-'].update(str(Params.stride))
             ###TEST###
-            if((values['-useCHROM-'])):
-                Params.methodName = "CHROM"
-                Params.method = {'method_func': cupy_CHROM,
-                                 'device_type': 'cuda', 'params': {}}
-            elif((values['-useLGI-'])):
-                Params.methodName = "LGI"
-                Params.method = {'method_func': cpu_LGI,
+            # if((values['-useCHROM-'])):
+            #     Params.methodName = "CHROM"
+            #     Params.method = {'method_func': cupy_CHROM,
+            #                      'device_type': 'cuda', 'params': {}}
+            if((values['-useNetwork-'])):
+                Params.methodName = "Network"
+                Params.method = {'method_func': gpu_NN,
                                  'device_type': 'cpu', 'params': {}}
             elif((values['-use2SR-'])):
                 Params.methodName = "2SR"
@@ -280,25 +259,21 @@ def GUI_MENU():
                 Params.fps_fixed = int(
                     values['-fpsfixed-']) if int(values['-fpsfixed-']) > 0 else None
             window['-fpsfixed-'].update(str(Params.fps_fixed))
-            Params.skin_extractor = 'convexhull' if bool(
-                values['-skinConvex-']) else 'faceparsing'
             Params.approach = 'holistic' if bool(
                 values['-holistic-']) else 'patches'
-            Params.type = 'mean' if bool(
-                values['-mean-']) else 'median'
-            Params.patches = 'squares' if bool(
-                values['-squares-']) else 'rects'
             try:
                 ldlist = ast.literal_eval(values['-ldmkslist-'])
                 Params.landmarks_list = ldlist if len(
                     ldlist) > 0 else Params.landmarks_list
             except:
                 window['-ldmkslist-'].update(str(Params.landmarks_list))
-            if values['-squares_dim-'].isnumeric():
-                Params.squares_dim = float(
-                    values['-squares_dim-']) if float(values['-squares_dim-']) > 0 else None
-            else:
-                window['-squares_dim-'].update(str(Params.squares_dim))
+            if bool(values['-small-']):
+                Params.landmark_size = 'small' 
+            elif bool(values['-mid-']):
+                Params.landmark_size = 'mid'
+            elif bool(values['-big-']):
+                Params.landmark_size = 'big'
+            
             try:
                 Params.rects_dims = ast.literal_eval(values['-rectsdim-'])
                 # Default if len is not the same
@@ -360,8 +335,6 @@ def GUI_MENU():
                 values['-visualizeldmkstrue-']) else False
             Params.visualize_patches = True if bool(
                 values['-visualizepatchestrue-']) else False
-            Params.visualize_landmarks_number = True if bool(
-                values['-visualizeldmksnumtrue-']) else False
 
             try:
                 colorfont = ast.literal_eval(values['-FontColor-'])
@@ -408,8 +381,8 @@ if __name__ == '__main__':
     Params.pre_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
 
-    Params.method = {'method_func': gpu_2SR,             #cpu_SSR、cupy_CHROM
-                     'device_type': 'cuda', 'params': {}}   #'device_type': 'cuda'
+    # Params.method = {'method_func': gpu_2SR,             #cpu_SSR、cupy_CHROM
+    #                  'device_type': 'cuda', 'params': {}}   #'device_type': 'cuda'
 
     Params.post_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]

@@ -1,10 +1,38 @@
-import time
+import os
+import sys
+sys.path.append("D://rPPG//FCUAI_rPPG_workplace//pyVHR")
 import numpy as np
+import pandas as pd
 import cupy
+import scipy
+from scipy.signal import butter
 from params import Params
 from BPM.BPM import BPMcuda,BPM
 import tensorflow as tf
+from BVP.model import *
 
+def NNsignals_to_bvps_to_bpm_cpu(sig,queue):
+    model = EfficientPhys_attention(frame_depth = 180,img_size=72,in_channels=3) #EfficientPhys_residualTSM   EfficientPhys_attention
+    model.eval()
+    model.load_state_dict(torch.load('realtime//EfficientPhys_model155.pt',map_location=torch.device('cpu')))
+    sig = sig.reshape(-1,3,72,72)
+    outputs = model(torch.tensor(sig))
+    outputs = outputs[:,0]
+    outputs = outputs.detach().numpy()
+    # bvp_data = pd.Series(outputs)
+    # if os.path.exists('C:\\Users\\user\\Desktop\\bvp_data.csv'):    
+    #     old_bvp_data = pd.read_csv('C:\\Users\\user\\Desktop\\bvp_data.csv')
+    #     bvp_data = pd.concat([bvp_data],axis =0,ignore_index = True)    #bpm_data_sec,bpm_median
+    #     pd.concat([old_bvp_data,bvp_data],axis =1).to_csv('C:\\Users\\user\\Desktop\\bvp_data.csv',index = False)
+    # else:
+    #     bvp_data = pd.concat([bvp_data],axis =0,ignore_index = True).to_csv('C:\\Users\\user\\Desktop\\bvp_data.csv',index = False)
+    [b_pulse, a_pulse] = butter(1, [0.75 / 30 * 2, 3 / 30 * 2], btype='bandpass')
+    outputs = scipy.signal.filtfilt(b_pulse, a_pulse, np.double(outputs))
+    fft = np.abs(scipy.fft.rfft(outputs,n = 1024))
+    bpm_place = np.argmax(fft)
+    bpm = scipy.fft.rfftfreq(1024,1/30)
+    bpm = bpm[bpm_place]*60
+    queue.put(bpm)
 
 def signals_to_bvps_to_bpm_cuda(sig,queue, gpu_method,BPM_obj, params={}):
     """
@@ -163,13 +191,10 @@ def multi_face_landmarks_parallel(image,face_landmarks,mp_drawing,width,height,l
                 ###TEST###
                 if(min_x > coords[0]):
                     min_x = coords[0]
-
                 if(min_y > coords[1]):
                     min_y = coords[1]
-
                 if(max_x < coords[0]):
                     max_x = coords[0]
-
                 if(max_y < coords[1]):
                     max_y = coords[1]
     

@@ -17,6 +17,7 @@ from extraction.sig_processing import *
 from extraction.sig_extraction_methods import *
 from extraction.skin_extraction_methods import *
 from BVP.BVP import *
+from BVP.model import *
 from BPM.BPM import *
 from BVP.methods import *
 from BVP.filters import *
@@ -70,11 +71,13 @@ def VHRroutine(sharedData):
     foursecbpm = []
     state = 0
     state2 = 0
-    interval = 3                #幾秒算一次
+    if Params.method['method_func'] == gpu_NN:
+        interval = 2                #幾秒算一次
+    else:
+        interval = 3
     patchNum = 0
     skinlen = 0
     movement = 5
-    flag = 0                    #作為跳過第30偵的開關，若為0則關。第29偵會開啟
     global last_bpm
     global bpm_num
 
@@ -134,8 +137,14 @@ def VHRroutine(sharedData):
 
     skin_ex = None
     target_device = 'GPU' if Params.cuda else 'CPU'
+    if Params.landmark_size =='small':
+        size = 'small'
+    if Params.landmark_size =='mid':
+        size = 'mid'
+    if Params.landmark_size =='big':
+        size = 'big'
     if Params.skin_extractor == 'convexhull':
-        skin_ex = SkinExtractionConvexHull(target_device)
+        skin_ex = SkinExtractionConvexHull(target_device,size)
     elif Params.skin_extractor == 'faceparsing':
         skin_ex = SkinExtractionFaceParsing(target_device)
 
@@ -191,8 +200,7 @@ def VHRroutine(sharedData):
             if frame is None:
                 continue
             # convert the BGR image to RGB.
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            # image = cv2.flip(image, 1)
+            ori_image = image = frame
             ##TEST##
             currentTime = None
             time1 = time.perf_counter()
@@ -233,54 +241,53 @@ def VHRroutine(sharedData):
             results = face_mesh.process(image)
             
             if results.multi_face_landmarks:#/////////////////////////////////////////////////////改多人的區域
-                if flag==1:
-                    flag = 0
+                if len(results.multi_face_landmarks) >= 1:
+                    processed_frames_count += 1
+                    face_landmarks = results.multi_face_landmarks[0]
+                    face_thread = threading.Thread(target = multi_face_landmarks_parallel,args = (image,face_landmarks,mp_drawing,width,height,ldmks,sharedData.q_first_face_ldmks,min_x,min_y,max_x,max_y,sharedData.q_face_range,skin_ex))
+                    face_thread.daemon = False
+                    face_thread.start()
                 else:
-                    if len(results.multi_face_landmarks) >= 1:
-                        processed_frames_count += 1
-                        face_landmarks = results.multi_face_landmarks[0]
-                        face_thread = threading.Thread(target = multi_face_landmarks_parallel,args = (image,face_landmarks,mp_drawing,width,height,ldmks,sharedData.q_first_face_ldmks,min_x,min_y,max_x,max_y,sharedData.q_face_range,skin_ex))
-                        face_thread.daemon = False
-                        face_thread.start()
+                    state = 0
 
-                    if len(results.multi_face_landmarks) == 2:
-                        processed_frames_count2 += 1
-                        face_landmarks_2 = results.multi_face_landmarks[1]
-                        face_thread2 = threading.Thread(target = multi_face_landmarks_parallel,args = (image,face_landmarks_2,mp_drawing,width,height,ldmks2,sharedData.q_second_face_ldmks,min_x2,min_y2,max_x2,max_y2,sharedData.q_face_range2,skin_ex))
-                        face_thread2.daemon = False
-                        face_thread2.start()
-                    else:
-                        cropped_skin_im2 = tf.zeros_like(image)
-                        full_skin_im2 = tf.zeros_like(image)
-                        sig2.clear()
-                        processed_frames_count2 = 0
-                        state2 = 0
-                        currentBPM2 = 0
-                    face_thread.join()
-                    if len(results.multi_face_landmarks) == 2:
-                        face_thread2.join()
-                        
-                    if not sharedData.q_first_face_ldmks.empty():
-                        cropped_skin_im = sharedData.q_first_face_ldmks.get()
-                        full_skin_im = sharedData.q_first_face_ldmks.get()
-                        min_x = sharedData.q_face_range.get()
-                        min_y = sharedData.q_face_range.get()
-                        max_x = sharedData.q_face_range.get()
-                        max_y = sharedData.q_face_range.get()
-                    if not sharedData.q_second_face_ldmks.empty():
-                        cropped_skin_im2 = sharedData.q_second_face_ldmks.get()
-                        full_skin_im2 = sharedData.q_second_face_ldmks.get()
-                        min_x2 = sharedData.q_face_range2.get()
-                        min_y2 = sharedData.q_face_range2.get()
-                        max_x2 = sharedData.q_face_range2.get()
-                        max_y2 = sharedData.q_face_range2.get()
+                if len(results.multi_face_landmarks) == 2:
+                    processed_frames_count2 += 1
+                    face_landmarks_2 = results.multi_face_landmarks[1]
+                    face_thread2 = threading.Thread(target = multi_face_landmarks_parallel,args = (image,face_landmarks_2,mp_drawing,width,height,ldmks2,sharedData.q_second_face_ldmks,min_x2,min_y2,max_x2,max_y2,sharedData.q_face_range2,skin_ex))
+                    face_thread2.daemon = False
+                    face_thread2.start()
+                else:
+                    cropped_skin_im2 = tf.zeros_like(image)
+                    full_skin_im2 = tf.zeros_like(image)
+                    sig2.clear()
+                    processed_frames_count2 = 0
+                    state2 = 0
+                    currentBPM2 = 0
+                face_thread.join()
+                if len(results.multi_face_landmarks) == 2:
+                    face_thread2.join()
+                    
+                if not sharedData.q_first_face_ldmks.empty():
+                    cropped_skin_im = sharedData.q_first_face_ldmks.get()
+                    full_skin_im = sharedData.q_first_face_ldmks.get()
+                    min_x = sharedData.q_face_range.get()
+                    min_y = sharedData.q_face_range.get()
+                    max_x = sharedData.q_face_range.get()
+                    max_y = sharedData.q_face_range.get()
+                if not sharedData.q_second_face_ldmks.empty():
+                    cropped_skin_im2 = sharedData.q_second_face_ldmks.get()
+                    full_skin_im2 = sharedData.q_second_face_ldmks.get()
+                    min_x2 = sharedData.q_face_range2.get()
+                    min_y2 = sharedData.q_face_range2.get()
+                    max_x2 = sharedData.q_face_range2.get()
+                    max_y2 = sharedData.q_face_range2.get()
 
-                        temp_image = cropped_skin_im2
-                        cropped_skin_im2 = cropped_skin_im
-                        cropped_skin_im = temp_image
-                        temp_image = full_skin_im2
-                        full_skin_im2 = full_skin_im
-                        full_skin_im = temp_image
+                    temp_image = cropped_skin_im2
+                    cropped_skin_im2 = cropped_skin_im
+                    cropped_skin_im = temp_image
+                    temp_image = full_skin_im2
+                    full_skin_im2 = full_skin_im
+                    full_skin_im = temp_image
             else:
                 cropped_skin_im = tf.zeros_like(image)
                 full_skin_im = tf.zeros_like(image)
@@ -317,8 +324,11 @@ def VHRroutine(sharedData):
                             temp = cv2.resize(cropped_skin_im, (Params.resize_size, Params.resize_size), interpolation=cv2.INTER_AREA)
                         else:
                             temp = tf.pad(cropped_skin_im,[[0,full_skin_im.shape[0]-cropped_skin_im.shape[0]],[full_skin_im.shape[1]-cropped_skin_im.shape[1],0],[0,0]])
-                        magic_ldmks =tf.constant(
-                            ldmks[Params.landmarks_list], dtype=tf.dtypes.float32)
+                    elif Params.method['method_func'] ==  gpu_NN: 
+                        temp = ori_image[min_y:max_y,min_x:max_x]
+                        # cv2.imwrite("1.png",temp)
+                        if Params.resize:                                       #TRUE則做resize不用padding
+                            temp = cv2.resize(cropped_skin_im, (Params.resize_size, Params.resize_size), interpolation=cv2.INTER_LINEAR)
                     else:
                         magic_ldmks = np.array(
                             ldmks[Params.landmarks_list], dtype=np.float32)
@@ -337,8 +347,11 @@ def VHRroutine(sharedData):
                                 temp = cv2.resize(cropped_skin_im2, (Params.resize_size, Params.resize_size), interpolation=cv2.INTER_AREA)
                             else:
                                 temp = tf.pad(cropped_skin_im2,[[0,full_skin_im.shape[0]-cropped_skin_im2.shape[0]],[full_skin_im.shape[1]-cropped_skin_im.shape[1],0],[0,0]])
-                            magic_ldmks =tf.constant(
-                                ldmks[Params.landmarks_list], dtype=tf.dtypes.float32)
+                        elif Params.method['method_func'] ==  gpu_NN: 
+                            temp = ori_image[min_y2:max_y2,min_x2:max_x2]
+                            # cv2.imwrite("1.png",temp)
+                            if Params.resize:                                       #TRUE則做resize不用padding
+                                temp = cv2.resize(cropped_skin_im2, (Params.resize_size, Params.resize_size), interpolation=cv2.INTER_LINEAR)
                         else:
                             magic_ldmks = np.array(
                                 ldmks[Params.landmarks_list], dtype=np.float32)
@@ -408,28 +421,6 @@ def VHRroutine(sharedData):
                             sharedData.q_skin_image.put(full_skin_im)
                     else:
                         sharedData.q_skin_image.put(full_skin_im)        #full_skin_im   cropped_skin_im
-                    
-                # if Params.approach == 'patches' and Params.visualize_landmarks == True:
-                #     annotated_image = full_skin_im.copy()
-                #     for idx in Params.landmarks_list:       #/////////////idx為mediapipe的468個點中的100個點
-                #         cv2.circle(
-                #             annotated_image, (int(ldmks[idx, 1]), int(ldmks[idx, 0])), radius=0, color=Params.font_color, thickness=-1)
-                #         if Params.visualize_landmarks_number == True:
-                #             cv2.putText(annotated_image, str(idx),
-                #                         (int(ldmks[idx, 1]), int(ldmks[idx, 0])), cv2.FONT_HERSHEY_SIMPLEX, Params.font_size,  Params.font_color,  1)
-                #     if Params.visualize_patches == True:
-                #         if Params.patches == "squares":
-                #             sides = [Params.squares_dim, ] * len(magic_ldmks)
-                #             sides = np.array(sides)
-                #             annotated_image = draw_rects(
-                #                 annotated_image, np.array(magic_ldmks[:, 1]), np.array(magic_ldmks[:, 0]), sides, sides, color)
-                #         elif Params.patches == "rects":
-                #             rects_dims = np.array(Params.rects_dims)
-                #             annotated_image = draw_rects(
-                #                 annotated_image, np.array(magic_ldmks[:, 1]),
-                #                 np.array(magic_ldmks[:, 0]), rects_dims[:,0],rects_dims[:,1] , color)
-                #     # visualize patches
-                #     sharedData.q_patches_image.put(annotated_image)
             else:
                 send_images_count += 1
 
@@ -439,12 +430,10 @@ def VHRroutine(sharedData):
                     sig = sig
                 else:
                     sig = sig[1:]                   #取第2個到最後，也就是只取後30偵
-                if sig_buff_counter == 2 :
-                    flag = 1
                 if sig_buff_counter == 1 :
                     sig_buff_counter = sig_stride           #算一次bvp後buffer重新堆30偵
                     state+=1
-                    if Params.method['method_func'] != gpu_2SR:
+                    if Params.method['method_func'] == cupy_CHROM:
                         copy_sig = np.array(sig, dtype=np.float32)
                         copy_sig = np.swapaxes(copy_sig, 0, 1)
                         copy_sig = np.swapaxes(copy_sig, 1, 2)
@@ -464,52 +453,65 @@ def VHRroutine(sharedData):
                                     copy_sig = filt['filter_func'](
                                         copy_sig, **filt['params'])
                     
-                    else:
+                    elif Params.method['method_func'] == gpu_2SR:
+                        copy_sig = np.array(sig, dtype=np.float32)
+                    elif Params.method['method_func'] == gpu_NN:
                         copy_sig = np.array(sig, dtype=np.float32)
                     
                     ### BVP and BPM ###
                     
-                    if state % interval==1:                     #interval 預設3秒
-                        if Params.method['device_type'] == 'cpu': 
-                            thread = threading.Thread(target = signals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q,Params.method['method_func'], BPM_obj,Params.method['params']))
-                            thread.daemon = True
-                            thread.start()                
-                        elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
-                            thread = threading.Thread(target = signals_to_bvps_to_bpm_cuda,args = (copy_sig,sharedData.q, Params.method['method_func'],BPM_obj, Params.method['params']))
-                            thread.daemon = True
-                            thread.start()
-                        bpm = currentBPM
-                    elif state % interval==0:
-                        thread.join()
-                        bpm =sharedData.q.get()
-                        if state<=12:
-                            foursecbpm.append(bpm)
-                    else :
-                        bpm = currentBPM
-                        
-                    if state>12:
-                        if bpm>currentBPM+10:
-                            if bpm>currentBPM+20:
+                    if Params.method['method_func'] == gpu_NN:
+                        if state % interval==1:
+                            if Params.method['device_type'] == 'cpu': 
+                                thread = threading.Thread(target = NNsignals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q))
+                                thread.daemon = True
+                                thread.start()
                                 bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
-                        elif bpm<currentBPM-10:
-                            if bpm<currentBPM-20:
-                                bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
-                    elif state==12 :
-                        currentBPM = np.mean(foursecbpm)
-                        if bpm>currentBPM+10:
-                            if bpm>currentBPM+25:
-                                bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
-                        elif bpm<currentBPM-10:
-                            if bpm<currentBPM-25:
-                                bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
+                        else:
+                            thread.join()
+                            bpm =sharedData.q.get()
+                    else:
+                        if state % interval==1:                     #interval 預設3秒
+                            if Params.method['device_type'] == 'cpu': 
+                                thread = threading.Thread(target = signals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q,Params.method['method_func'], BPM_obj,Params.method['params']))
+                                thread.daemon = True
+                                thread.start()                
+                            elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
+                                thread = threading.Thread(target = signals_to_bvps_to_bpm_cuda,args = (copy_sig,sharedData.q, Params.method['method_func'],BPM_obj, Params.method['params']))
+                                thread.daemon = True
+                                thread.start()
+                            bpm = currentBPM
+                        elif state % interval==0:
+                            thread.join()
+                            bpm =sharedData.q.get()
+                            if state<=12:
+                                foursecbpm.append(bpm)
+                        else :
+                            bpm = currentBPM
+                            
+                        if state>12:
+                            if bpm>currentBPM+10:
+                                if bpm>currentBPM+20:
+                                    bpm = currentBPM
+                                else:
+                                    bpm = (currentBPM+bpm)/2
+                            elif bpm<currentBPM-10:
+                                if bpm<currentBPM-20:
+                                    bpm = currentBPM
+                                else:
+                                    bpm = (currentBPM+bpm)/2
+                        elif state==12 :
+                            currentBPM = np.mean(foursecbpm)
+                            if bpm>currentBPM+10:
+                                if bpm>currentBPM+25:
+                                    bpm = currentBPM
+                                else:
+                                    bpm = (currentBPM+bpm)/2
+                            elif bpm<currentBPM-10:
+                                if bpm<currentBPM-25:
+                                    bpm = currentBPM
+                                else:
+                                    bpm = (currentBPM+bpm)/2
                         
                         
                     
@@ -521,8 +523,6 @@ def VHRroutine(sharedData):
                     # else:
                     #     bpm_data = pd.concat([bpm_data],axis =0,ignore_index = True).to_csv('C:\\Users\\user\\Desktop\\bpm_data.csv',index = False)
                     
-
-                        
                     sharedData.q_bpm.put(bpm)
                     ###TEST###
                     currentBPM = np.round(bpm, 2)
@@ -541,7 +541,7 @@ def VHRroutine(sharedData):
                 if sig_buff_counter2 == 1 :
                     sig_buff_counter2 = sig_stride           #算一次bvp後buffer重新堆30偵
                     state2+=1
-                    if Params.method['method_func'] != gpu_2SR:
+                    if Params.method['method_func'] == cupy_CHROM:
                         # sig_buff_counter = sig_stride
                         copy_sig = np.array(sig2, dtype=np.float32)
                         copy_sig = np.swapaxes(copy_sig, 0, 1)
@@ -561,39 +561,50 @@ def VHRroutine(sharedData):
                                 else:
                                     copy_sig = filt['filter_func'](
                                         copy_sig, **filt['params'])
-                    
-                    else:
+                    elif Params.method['method_func'] == gpu_2SR:
                         copy_sig = np.array(sig2, dtype=np.float32)
-                    
+                    elif Params.method['method_func'] == gpu_NN:
+                        copy_sig = np.array(sig2, dtype=np.float32)
                     ## BVP ###
-                    if state2 % interval==1:                     #interval 預設3秒
-                        if Params.method['device_type'] == 'cpu': 
-                            thread2 = threading.Thread(target = signals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q2, Params.method['method_func'],BPM_obj, Params.method['params']))
-                            thread2.daemon = True
-                            thread2.start()                
-                        elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
-                            thread2 = threading.Thread(target = signals_to_bvps_to_bpm_cuda,args = (copy_sig,sharedData.q2,Params.method['method_func'],BPM_obj, Params.method['params']))
-                            thread2.daemon = True
-                            thread2.start()
-                        bpm = currentBPM2
-                    elif state2 % interval==0:
-                        thread2.join()
-                        bpm =sharedData.q2.get() 
-                    else :
-                        bpm = currentBPM2
-                    if state2>10:
-                        if bpm>currentBPM+10:
-                            if bpm>currentBPM+15:
-                                bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
-                        elif bpm<currentBPM-10:
-                            if bpm<currentBPM-15:
-                                bpm = currentBPM
-                            else:
-                                bpm = (currentBPM+bpm)/2
-                    sharedData.q_bpm2.put(bpm)
-                    currentBPM2 = np.round(bpm, 2)
+                    if Params.method['method_func'] == gpu_NN:
+                        if state2 % interval==1:
+                            if Params.method['device_type'] == 'cpu': 
+                                thread = threading.Thread(target = NNsignals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q2))
+                                thread.daemon = True
+                                thread.start()
+                                bpm2 = currentBPM2
+                        else:
+                            thread.join()
+                            bpm2 =sharedData.q2.get()
+                    else:
+                        if state2 % interval==1:                     #interval 預設3秒
+                            if Params.method['device_type'] == 'cpu': 
+                                thread2 = threading.Thread(target = signals_to_bvps_to_bpm_cpu,args = (copy_sig,sharedData.q2, Params.method['method_func'],BPM_obj, Params.method['params']))
+                                thread2.daemon = True
+                                thread2.start()                
+                            elif Params.method['device_type'] == 'cuda':#執行這裡CHROM轉BVP//////////////////////////////////////////////
+                                thread2 = threading.Thread(target = signals_to_bvps_to_bpm_cuda,args = (copy_sig,sharedData.q2,Params.method['method_func'],BPM_obj, Params.method['params']))
+                                thread2.daemon = True
+                                thread2.start()
+                            bpm2 = currentBPM2
+                        elif state2 % interval==0:
+                            thread2.join()
+                            bpm2 =sharedData.q2.get() 
+                        else :
+                            bpm2 = currentBPM2
+                        if state2>12:
+                            if bpm2>currentBPM+10:
+                                if bpm2>currentBPM+25:
+                                    bpm2 = currentBPM
+                                else:
+                                    bpm2 = (currentBPM+bpm2)/2
+                            elif bpm2<currentBPM-10:
+                                if bpm2<currentBPM-25:
+                                    bpm2 = currentBPM
+                                else:
+                                    bpm2 = (currentBPM+bpm2)/2
+                    sharedData.q_bpm2.put(bpm2)
+                    currentBPM2 = np.round(bpm2, 2)
                     
                     
                 else:
